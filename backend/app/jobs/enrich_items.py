@@ -1,0 +1,133 @@
+"""Batch enrichment: USDA lookup + LLM nutrition/diet tagging for menu items
+that don't have cached results yet. Runs after the scrape job — see
+docs/adr/0002-enrichment-pipeline.md. Diff logic means this only ever pays
+USDA/LLM cost for genuinely new item names, not on every run.
+
+Run manually with: python -m app.jobs.enrich_items
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+
+import httpx
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.db.models import DietTag, Eatery, MenuEvent, MenuItem, NutritionMatch, NutritionSource
+from app.db.session import SessionLocal
+from app.services import usda
+from app.services.llm_enrichment import EnrichmentResult, enrich_item, make_client
+
+logger = logging.getLogger(__name__)
+
+# Only 104West! among the 10 AYCE dining rooms is a certified kosher/halal
+# hall (see docs/adr/0005-eatery-scope.md) — used to give the LLM diet-tagging
+# context. Not modeled as an Eatery column since it's the only one that matters
+# for MVP; revisit if more halls need dietary-certification context.
+KOSHER_HALLS = {"104West!"}
+
+CONCURRENCY = 5
+
+
+def find_unenriched_items(db: Session) -> list[tuple[str, str, str]]:
+    """Distinct (item_name, category, eatery_name) for items with no cached
+    NutritionMatch yet. One representative category/eatery per item name."""
+    enriched_names = select(NutritionMatch.item_name)
+
+    rows = (
+        db.query(MenuItem.name, MenuItem.category, Eatery.name)
+        .join(MenuEvent, MenuItem.menu_event_id == MenuEvent.id)
+        .join(Eatery, MenuEvent.eatery_id == Eatery.id)
+        .filter(MenuItem.name.notin_(enriched_names))
+        .distinct(MenuItem.name)
+        .all()
+    )
+    return list(rows)
+
+
+async def enrich_one(
+    semaphore: asyncio.Semaphore,
+    http_client: httpx.AsyncClient,
+    llm_client,
+    item_name: str,
+    category: str,
+    eatery_name: str,
+) -> tuple[str, EnrichmentResult | None]:
+    async with semaphore:
+        usda_match = await usda.search_food(http_client, item_name)
+        result = await enrich_item(
+            llm_client, item_name, category, eatery_name, eatery_name in KOSHER_HALLS, usda_match
+        )
+        return item_name, result
+
+
+def save_result(db: Session, item_name: str, result: EnrichmentResult) -> None:
+    db.add(
+        NutritionMatch(
+            item_name=item_name,
+            source=NutritionSource(result.source),
+            calories=result.calories,
+            protein_g=result.protein_g,
+            carbs_g=result.carbs_g,
+            fat_g=result.fat_g,
+            confidence_score=result.confidence,
+        )
+    )
+    db.add(
+        DietTag(
+            item_name=item_name,
+            diet_tags=result.diet_tags,
+            likely_allergens=result.likely_allergens,
+        )
+    )
+
+
+async def enrich() -> dict:
+    db = SessionLocal()
+    try:
+        items = find_unenriched_items(db)
+    finally:
+        db.close()
+
+    logger.info("%d item(s) need enrichment", len(items))
+    if not items:
+        return {"enriched": 0, "failed": 0}
+
+    semaphore = asyncio.Semaphore(CONCURRENCY)
+    llm_client = make_client()
+
+    async with httpx.AsyncClient() as http_client:
+        tasks = [
+            enrich_one(semaphore, http_client, llm_client, name, category, eatery_name)
+            for name, category, eatery_name in items
+        ]
+        results = await asyncio.gather(*tasks)
+
+    db = SessionLocal()
+    enriched = 0
+    failed = 0
+    try:
+        for item_name, result in results:
+            if result is None:
+                failed += 1
+                logger.warning("Skipping %r — enrichment failed", item_name)
+                continue
+            save_result(db, item_name, result)
+            enriched += 1
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+    summary = {"enriched": enriched, "failed": failed}
+    logger.info("Enrichment complete: %s", summary)
+    return summary
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    asyncio.run(enrich())
