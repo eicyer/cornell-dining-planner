@@ -1,36 +1,42 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Cornell Dining Meal Planner
 
-## Getting Started
+See `CONTEXT.md` for domain vocabulary and `docs/adr/` for architecture decisions and why they were made.
 
-First, run the development server:
+## Local dev setup
+
+Ports are non-default on this machine because 5432 and 8000 are already taken by another project (`nabiz-kargo-db-1`, OrbStack) — don't reuse those.
+
+### Backend (FastAPI)
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+docker compose up -d              # Postgres on localhost:5433
+cd backend
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+alembic upgrade head               # create/update schema
+uvicorn app.main:app --port 8001 --reload
+curl http://localhost:8001/health
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+To pull real menu data (10 AYCE dining halls only, see `docs/adr/0005-eatery-scope.md`):
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+python -m app.jobs.scrape_menus
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Google OAuth requires filling in `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` in `.env.local` — create credentials at https://console.cloud.google.com/apis/credentials (OAuth client, type "Web application", redirect URI `http://localhost:8001/auth/callback`). Without them, `/auth/login` will fail but the rest of the API still works.
 
-## Learn More
+### Frontend (Expo / React Native / React Native Web)
 
-To learn more about Next.js, take a look at the following resources:
+Needs Node 20+ (Expo's CLI breaks on Node 18 — `frontend/.nvmrc` pins this):
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+cd frontend
+nvm use               # picks up .nvmrc
+npm run web            # desktop, in browser
+npm run ios            # requires Xcode + iOS simulator
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Status
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Phase 0 (foundation) complete: backend skeleton + migrations + health check, local Postgres, Google OAuth routes scaffolded (needs real credentials), Expo + react-native-web project, daily scrape job pulling real menu data end to end. See `docs/adr/` for the phased plan (`0006-stack-migration-from-nextjs.md` has the most recent context). Not yet deployed anywhere — Railway/Render deployment needs your account, so that's a manual step when you're ready.

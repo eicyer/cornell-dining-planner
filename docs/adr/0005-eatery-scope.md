@@ -1,0 +1,5 @@
+# MVP scope is limited to AYCE dining halls, excluding cafes/carts/food courts
+
+The dining feed's 32 eateries split by `eateryTypes` into "dining room" (all-you-care-to-eat halls: 104West!, Becker, Cook, Jansen's at Bethe, Keeton, Morrison, North Star, Okenshields, Risley, Rose) versus cafes, coffee shops, carts, convenience stores, and one food court. These aren't just a scope-size cut — they're structurally different for meal crafting. AYCE dining halls serve buffet-style stations (salad bar, protein, sides) whose items are independently combinable, which is exactly what the [[0003-meal-crafting-algorithm]] optimizer needs. Cafes mostly sell fixed, pre-composed items (a specific sandwich, a coffee drink) that don't decompose into swappable components the same way.
+
+Decision: MVP only scrapes/enriches/suggests for "dining room" type eateries. The landing page defaults to showing currently-open dining halls (using `operatingHours`), with an option to also see closed ones for forward planning. Cafes/carts/food courts are out of scope entirely for now, not just hidden.
