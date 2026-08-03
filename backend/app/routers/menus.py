@@ -12,10 +12,13 @@ router = APIRouter()
 
 
 class NutritionOut(BaseModel):
-    calories: float
-    protein_g: float
-    carbs_g: float
-    fat_g: float
+    """Per 100g, not per portion — actual serving size is a personalization
+    decision made in Phase 2, not baked in here. See docs/adr/0007."""
+
+    calories_per_100g: float
+    protein_g_per_100g: float
+    carbs_g_per_100g: float
+    fat_g_per_100g: float
     confidence: float
     source: str
 
@@ -79,10 +82,10 @@ def menus_today(db: Session = Depends(get_db)) -> list[EateryOut]:
                             name=item.name,
                             nutrition=(
                                 NutritionOut(
-                                    calories=n.calories,
-                                    protein_g=n.protein_g,
-                                    carbs_g=n.carbs_g,
-                                    fat_g=n.fat_g,
+                                    calories_per_100g=n.calories_per_100g,
+                                    protein_g_per_100g=n.protein_g_per_100g,
+                                    carbs_g_per_100g=n.carbs_g_per_100g,
+                                    fat_g_per_100g=n.fat_g_per_100g,
                                     confidence=n.confidence_score,
                                     source=n.source.value,
                                 )

@@ -64,24 +64,26 @@ async def enrich_one(
 
 
 def save_result(db: Session, item_name: str, result: EnrichmentResult) -> None:
-    db.add(
-        NutritionMatch(
-            item_name=item_name,
-            source=NutritionSource(result.source),
-            calories=result.calories,
-            protein_g=result.protein_g,
-            carbs_g=result.carbs_g,
-            fat_g=result.fat_g,
-            confidence_score=result.confidence,
-        )
-    )
-    db.add(
-        DietTag(
-            item_name=item_name,
-            diet_tags=result.diet_tags,
-            likely_allergens=result.likely_allergens,
-        )
-    )
+    """Upsert, not insert-only — item_name is unique, and re-enrichment (e.g.
+    after a schema/prompt change) must be safe to re-run without hitting a
+    unique constraint violation on rows enriched by a previous run."""
+    nutrition = db.query(NutritionMatch).filter(NutritionMatch.item_name == item_name).one_or_none()
+    if nutrition is None:
+        nutrition = NutritionMatch(item_name=item_name)
+        db.add(nutrition)
+    nutrition.source = NutritionSource(result.source)
+    nutrition.calories_per_100g = result.calories_per_100g
+    nutrition.protein_g_per_100g = result.protein_g_per_100g
+    nutrition.carbs_g_per_100g = result.carbs_g_per_100g
+    nutrition.fat_g_per_100g = result.fat_g_per_100g
+    nutrition.confidence_score = result.confidence
+
+    diet_tag = db.query(DietTag).filter(DietTag.item_name == item_name).one_or_none()
+    if diet_tag is None:
+        diet_tag = DietTag(item_name=item_name)
+        db.add(diet_tag)
+    diet_tag.diet_tags = result.diet_tags
+    diet_tag.likely_allergens = result.likely_allergens
 
 
 async def enrich() -> dict:

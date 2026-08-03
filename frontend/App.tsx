@@ -6,11 +6,13 @@ import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, View } from 
 // plus :8001 when testing on iOS.
 const API_BASE = Platform.OS === 'web' ? 'http://localhost:8001' : 'http://localhost:8001';
 
+// Per 100g, not per portion — actual serving size is a personalization
+// decision made in Phase 2, not baked in here. See docs/adr/0007.
 type Nutrition = {
-  calories: number;
-  protein_g: number;
-  carbs_g: number;
-  fat_g: number;
+  calories_per_100g: number;
+  protein_g_per_100g: number;
+  carbs_g_per_100g: number;
+  fat_g_per_100g: number;
   confidence: number;
   source: string;
 };
@@ -89,7 +91,7 @@ export default function App() {
                       <View key={item.name} style={styles.item}>
                         <Text style={styles.itemName}>{item.name}</Text>
                         <Text style={styles.itemCalories}>
-                          {item.nutrition ? `${Math.round(item.nutrition.calories)} cal` : '—'}
+                          {item.nutrition ? `${Math.round(item.nutrition.calories_per_100g)} cal/100g` : '—'}
                         </Text>
                       </View>
                     ))}

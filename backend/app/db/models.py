@@ -108,7 +108,9 @@ class MenuItem(Base):
 
 
 class NutritionMatch(Base):
-    """Cached nutrition for a normalized item name — see docs/adr/0001, 0002."""
+    """Cached nutrition density for a normalized item name, per 100g — see
+    docs/adr/0001, 0002, 0007. Deliberately NOT a portion/serving value: actual
+    portion size is a personalization decision (Phase 2), not baked in here."""
 
     __tablename__ = "nutrition_matches"
 
@@ -118,10 +120,10 @@ class NutritionMatch(Base):
     source: Mapped[NutritionSource] = mapped_column(Enum(NutritionSource))
     usda_fdc_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    calories: Mapped[float] = mapped_column(Float)
-    protein_g: Mapped[float] = mapped_column(Float)
-    carbs_g: Mapped[float] = mapped_column(Float)
-    fat_g: Mapped[float] = mapped_column(Float)
+    calories_per_100g: Mapped[float] = mapped_column(Float)
+    protein_g_per_100g: Mapped[float] = mapped_column(Float)
+    carbs_g_per_100g: Mapped[float] = mapped_column(Float)
+    fat_g_per_100g: Mapped[float] = mapped_column(Float)
     confidence_score: Mapped[float] = mapped_column(Float, default=1.0)
 
     resolved_at: Mapped[datetime.datetime] = mapped_column(

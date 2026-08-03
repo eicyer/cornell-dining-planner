@@ -1,10 +1,15 @@
-"""LLM enrichment — nutrition estimate (USDA-grounded when possible) plus
-diet/allergen tagging, in a single call per item. See docs/adr/0001 and
-docs/adr/0002.
+"""LLM enrichment — nutrition density (per 100g) plus diet/allergen tagging.
+See docs/adr/0001, 0002, 0007.
 
-Diet/allergen tags are inferred from a bare item name with no ingredient list —
-they are informational, not an authoritative safety guarantee. See CONTEXT.md
-("Diet Tag").
+When USDA has a match, its per-100g numbers are used directly — the LLM is
+NOT asked to re-guess them, only to infer diet/allergen tags (which USDA data
+doesn't provide). The LLM only estimates macros from scratch when USDA has no
+match at all. This keeps "source": "usda" meaning what it says.
+
+Actual portion size (how many grams a user gets) is a personalization
+decision, not something baked in here — see docs/adr/0007. Diet/allergen tags
+are inferred from a bare item name with no ingredient list — informational,
+not an authoritative safety guarantee. See CONTEXT.md ("Diet Tag").
 """
 
 from __future__ import annotations
@@ -25,48 +30,61 @@ MODEL = "claude-haiku-4-5-20251001"
 DIET_TAGS = ["vegan", "vegetarian", "gluten_free", "dairy_free", "halal", "kosher"]
 ALLERGENS = ["dairy", "eggs", "gluten", "soy", "peanuts", "tree_nuts", "fish", "shellfish", "sesame"]
 
+# Survey (FNDDS) is "as prepared/consumed" data — the closest match to a named
+# dish. Foundation/SR Legacy are raw ingredients, a looser fit for a composed
+# dining-hall item, so a lower fixed confidence reflects that gap. Both skip
+# the LLM entirely for the numbers themselves.
+USDA_CONFIDENCE_BY_DATA_TYPE = {
+    "Survey (FNDDS)": 0.85,
+}
+DEFAULT_USDA_CONFIDENCE = 0.75
+
 
 @dataclass
 class EnrichmentResult:
-    calories: float
-    protein_g: float
-    carbs_g: float
-    fat_g: float
+    calories_per_100g: float
+    protein_g_per_100g: float
+    carbs_g_per_100g: float
+    fat_g_per_100g: float
     confidence: float
     source: str  # "usda" | "llm_estimate" — see app.db.models.NutritionSource
     diet_tags: list[str] = field(default_factory=list)
     likely_allergens: list[str] = field(default_factory=list)
 
 
-def _build_prompt(
-    item_name: str, category: str, eatery_name: str, is_kosher_hall: bool, usda_reference: UsdaMatch | None
-) -> str:
-    reference_block = "No USDA reference match found — estimate from the name alone."
-    if usda_reference is not None:
-        reference_block = (
-            f"USDA reference match: \"{usda_reference.description}\" ({usda_reference.data_type}), "
-            f"per 100g: {usda_reference.calories:.0f} kcal, {usda_reference.protein_g:.1f}g protein, "
-            f"{usda_reference.carbs_g:.1f}g carbs, {usda_reference.fat_g:.1f}g fat.\n"
-            "Use this as a grounding data point, not gospel — scale it to a realistic single "
-            "dining-hall portion size for this specific item, adjusting for how it's actually served."
-        )
-
+def _diet_tags_prompt(item_name: str, category: str, eatery_name: str, is_kosher_hall: bool) -> str:
     kosher_note = f'"{eatery_name}" is a certified kosher/halal dining hall.\n' if is_kosher_hall else ""
-
-    return f"""You are estimating nutrition and diet info for a college dining hall menu item.
+    return f"""You are tagging diet/allergen info for a college dining hall menu item.
+Nutrition numbers are already known (from USDA) — only classify diet compatibility.
 
 Item: "{item_name}"
 Menu category: "{category}"
 Eatery: "{eatery_name}"
 {kosher_note}
-{reference_block}
-
 Respond with ONLY valid JSON, no markdown fences, no commentary:
 {{
-  "calories": <int, single standard dining-hall portion>,
-  "protein_g": <float>,
-  "carbs_g": <float>,
-  "fat_g": <float>,
+  "diet_tags": [<subset of {DIET_TAGS}>],
+  "likely_allergens": [<subset of {ALLERGENS}>]
+}}
+
+Only use values from the lists shown — omit anything not clearly applicable rather than guessing."""
+
+
+def _full_estimate_prompt(item_name: str, category: str, eatery_name: str, is_kosher_hall: bool) -> str:
+    kosher_note = f'"{eatery_name}" is a certified kosher/halal dining hall.\n' if is_kosher_hall else ""
+    return f"""You are estimating nutrition and diet info for a college dining hall menu item.
+No USDA reference match was found — estimate from the name alone.
+
+Item: "{item_name}"
+Menu category: "{category}"
+Eatery: "{eatery_name}"
+{kosher_note}
+Respond with ONLY valid JSON, no markdown fences, no commentary:
+{{
+  "calories_per_100g": <int, as it would appear on a standard nutrition facts label per 100g>,
+  "protein_g_per_100g": <float>,
+  "carbs_g_per_100g": <float>,
+  "fat_g_per_100g": <float>,
   "confidence": <float 0-1, your confidence in these numbers>,
   "diet_tags": [<subset of {DIET_TAGS}>],
   "likely_allergens": [<subset of {ALLERGENS}>]
@@ -77,24 +95,26 @@ applicable rather than guessing. If the item name is too vague to be confident (
 lower the confidence score rather than the accuracy of the numbers."""
 
 
-def _parse_response(text: str, had_usda_reference: bool) -> EnrichmentResult:
+def _extract_json(text: str) -> dict:
     text = text.strip()
     if text.startswith("```"):
         text = text.strip("`")
         text = text[text.index("\n") + 1 :] if "\n" in text else text
+    return json.loads(text)
 
-    data = json.loads(text)
 
-    return EnrichmentResult(
-        calories=float(data["calories"]),
-        protein_g=float(data["protein_g"]),
-        carbs_g=float(data["carbs_g"]),
-        fat_g=float(data["fat_g"]),
-        confidence=float(data["confidence"]),
-        source="usda" if had_usda_reference else "llm_estimate",
-        diet_tags=[t for t in data.get("diet_tags", []) if t in DIET_TAGS],
-        likely_allergens=[a for a in data.get("likely_allergens", []) if a in ALLERGENS],
+async def _call(client: AsyncAnthropic, prompt: str) -> dict:
+    response = await client.messages.create(
+        model=MODEL,
+        max_tokens=512,
+        messages=[{"role": "user", "content": prompt}],
     )
+    text = "".join(block.text for block in response.content if block.type == "text")
+    return _extract_json(text)
+
+
+def _usda_confidence(usda_reference: UsdaMatch) -> float:
+    return USDA_CONFIDENCE_BY_DATA_TYPE.get(usda_reference.data_type, DEFAULT_USDA_CONFIDENCE)
 
 
 async def enrich_item(
@@ -105,16 +125,31 @@ async def enrich_item(
     is_kosher_hall: bool,
     usda_reference: UsdaMatch | None,
 ) -> EnrichmentResult | None:
-    prompt = _build_prompt(item_name, category, eatery_name, is_kosher_hall, usda_reference)
-
     try:
-        response = await client.messages.create(
-            model=MODEL,
-            max_tokens=512,
-            messages=[{"role": "user", "content": prompt}],
+        if usda_reference is not None:
+            data = await _call(client, _diet_tags_prompt(item_name, category, eatery_name, is_kosher_hall))
+            return EnrichmentResult(
+                calories_per_100g=usda_reference.calories,
+                protein_g_per_100g=usda_reference.protein_g,
+                carbs_g_per_100g=usda_reference.carbs_g,
+                fat_g_per_100g=usda_reference.fat_g,
+                confidence=_usda_confidence(usda_reference),
+                source="usda",
+                diet_tags=[t for t in data.get("diet_tags", []) if t in DIET_TAGS],
+                likely_allergens=[a for a in data.get("likely_allergens", []) if a in ALLERGENS],
+            )
+
+        data = await _call(client, _full_estimate_prompt(item_name, category, eatery_name, is_kosher_hall))
+        return EnrichmentResult(
+            calories_per_100g=float(data["calories_per_100g"]),
+            protein_g_per_100g=float(data["protein_g_per_100g"]),
+            carbs_g_per_100g=float(data["carbs_g_per_100g"]),
+            fat_g_per_100g=float(data["fat_g_per_100g"]),
+            confidence=float(data["confidence"]),
+            source="llm_estimate",
+            diet_tags=[t for t in data.get("diet_tags", []) if t in DIET_TAGS],
+            likely_allergens=[a for a in data.get("likely_allergens", []) if a in ALLERGENS],
         )
-        text = "".join(block.text for block in response.content if block.type == "text")
-        return _parse_response(text, usda_reference is not None)
     except Exception:
         logger.exception("LLM enrichment failed for %r", item_name)
         return None

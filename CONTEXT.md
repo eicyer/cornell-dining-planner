@@ -17,8 +17,8 @@ A single dish as named in the dining API feed (e.g. "Grilled Broccoli"). Distinc
 _Avoid_: Dish, food
 
 **Nutrition Match**:
-The mapping from a Menu Item to a USDA FoodData Central entry (or LLM-estimated fallback) that supplies its calorie/macro values for a standardized portion. Cached once resolved so it isn't recomputed on every read.
-_Avoid_: Nutrition lookup, food match
+The mapping from a Menu Item to its calorie/macro density **per 100g** — from a USDA FoodData Central entry when matched (used directly, not re-estimated), or an LLM estimate when not. Deliberately not a portion/serving value — see [[0007-nutrition-per-100g-portion-deferred]]. Cached once resolved so it isn't recomputed on every read.
+_Avoid_: Nutrition lookup, food match, portion (this is a density, not a serving size)
 
 **Crafted Meal**:
 A system-suggested combination of Menu Items from a single eatery/Menu Event, selected to fit a user's calorie/macro/preference targets.
