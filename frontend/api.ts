@@ -89,3 +89,103 @@ export async function getCraftedMealsToday(): Promise<EateryCrafted[]> {
 export function loginUrl(): string {
   return `${API_BASE}/auth/login`;
 }
+
+// --- Raw menu (per 100g, not per portion — see docs/adr/0007) ---
+
+export type MenuNutrition = {
+  calories_per_100g: number;
+  protein_g_per_100g: number;
+  carbs_g_per_100g: number;
+  fat_g_per_100g: number;
+  confidence: number;
+  source: string;
+};
+
+export type MenuItemOut = {
+  name: string;
+  nutrition: MenuNutrition | null;
+  diet_tags: string[];
+  likely_allergens: string[];
+};
+
+export type MenuCategory = { category: string; items: MenuItemOut[] };
+export type MenuEventOut = { meal_period: string; categories: MenuCategory[] };
+export type EateryMenu = {
+  id: number;
+  name: string;
+  campus_area: string | null;
+  menu_events: MenuEventOut[];
+};
+
+export async function getMenusToday(): Promise<EateryMenu[]> {
+  const res = await apiFetch('/menus/today');
+  if (!res.ok) throw new Error(`GET /menus/today failed: ${res.status}`);
+  return res.json();
+}
+
+// --- Logged meals ---
+
+export type LoggedMealItem = {
+  name: string;
+  category: string;
+  grams: number;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+};
+
+export type Totals = { calories: number; protein_g: number; carbs_g: number; fat_g: number };
+
+export type LoggedMeal = {
+  id: number;
+  date: string;
+  eatery_id: number;
+  eatery_name: string;
+  meal_period: string;
+  items: LoggedMealItem[];
+  totals: Totals;
+  liked: boolean | null;
+};
+
+export async function logMeal(
+  eateryId: number,
+  mealPeriod: string,
+  items: { name: string; grams: number }[],
+  liked: boolean | null = null
+): Promise<LoggedMeal> {
+  const res = await apiFetch('/logged-meals', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ eatery_id: eateryId, meal_period: mealPeriod, items, liked }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail ?? `POST /logged-meals failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function rateMeal(mealId: number, liked: boolean | null): Promise<LoggedMeal> {
+  const res = await apiFetch(`/logged-meals/${mealId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ liked }),
+  });
+  if (!res.ok) throw new Error(`PATCH /logged-meals/${mealId} failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getLoggedMealsToday(): Promise<LoggedMeal[]> {
+  const res = await apiFetch('/logged-meals');
+  if (!res.ok) throw new Error(`GET /logged-meals failed: ${res.status}`);
+  return res.json();
+}
+
+export type DaySummary = { date: string; totals: Totals; goal: Totals };
+
+export async function getLoggedMealsSummary(days = 7): Promise<DaySummary[]> {
+  const res = await apiFetch(`/logged-meals/summary?days=${days}`);
+  if (!res.ok) throw new Error(`GET /logged-meals/summary failed: ${res.status}`);
+  return res.json();
+}

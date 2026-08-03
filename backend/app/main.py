@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.core.config import settings
-from app.routers import auth, crafted_meals, health, menus, preferences
+from app.routers import auth, crafted_meals, health, logged_meals, menus, preferences
 
 app = FastAPI(title="Cornell Dining Planner API")
 app.add_middleware(SessionMiddleware, secret_key=settings.session_secret)
@@ -21,3 +21,4 @@ app.include_router(auth.router)
 app.include_router(menus.router)
 app.include_router(preferences.router)
 app.include_router(crafted_meals.router)
+app.include_router(logged_meals.router)

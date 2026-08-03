@@ -1,10 +1,19 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
-import { EateryCrafted, Me, Preferences, getCraftedMealsToday, getMe, getPreferences, loginUrl } from './api';
+import { EateryCrafted, EateryMenu, Me, Preferences, getCraftedMealsToday, getMe, getMenusToday, getPreferences, loginUrl } from './api';
 import PreferencesForm from './PreferencesForm';
 import CraftedMealsList from './CraftedMealsList';
+import DiaryScreen from './DiaryScreen';
+import EateryDetailScreen from './EateryDetailScreen';
 
-type Screen = { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'logged_out' } | { kind: 'survey' } | { kind: 'crafted'; eateries: EateryCrafted[] };
+type Screen =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'logged_out' }
+  | { kind: 'survey' }
+  | { kind: 'crafted'; eateries: EateryCrafted[] }
+  | { kind: 'diary' }
+  | { kind: 'eateryDetail'; eatery: EateryMenu };
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>({ kind: 'loading' });
@@ -33,6 +42,20 @@ export default function App() {
       }
 
       await loadCraftedMeals();
+    } catch (err: any) {
+      setScreen({ kind: 'error', message: err.message });
+    }
+  }
+
+  async function handleSelectEatery(eateryId: number) {
+    try {
+      const menus = await getMenusToday();
+      const eatery = menus.find((e) => e.id === eateryId);
+      if (!eatery) {
+        setScreen({ kind: 'error', message: `Eatery ${eateryId} not found in today's menus` });
+        return;
+      }
+      setScreen({ kind: 'eateryDetail', eatery });
     } catch (err: any) {
       setScreen({ kind: 'error', message: err.message });
     }
@@ -78,7 +101,27 @@ export default function App() {
     );
   }
 
-  return <CraftedMealsList eateries={screen.eateries} />;
+  if (screen.kind === 'diary') {
+    return <DiaryScreen onGoToToday={loadCraftedMeals} />;
+  }
+
+  if (screen.kind === 'eateryDetail') {
+    return (
+      <EateryDetailScreen
+        eatery={screen.eatery}
+        onBack={loadCraftedMeals}
+        onLogged={() => setScreen({ kind: 'diary' })}
+      />
+    );
+  }
+
+  return (
+    <CraftedMealsList
+      eateries={screen.eateries}
+      onGoToDiary={() => setScreen({ kind: 'diary' })}
+      onSelectEatery={handleSelectEatery}
+    />
+  );
 }
 
 const styles = StyleSheet.create({
