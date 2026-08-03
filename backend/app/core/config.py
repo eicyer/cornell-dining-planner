@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     google_client_id: str = ""
     google_client_secret: str = ""
     session_secret: str = "dev-only-change-me"
+    frontend_url: str = "http://localhost:8081"
 
     anthropic_api_key: str = ""
     usda_api_key: str = ""

@@ -1,8 +1,10 @@
 from authlib.integrations.starlette_client import OAuth
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.deps import get_current_user
 from app.db.models import User
 from app.db.session import get_db
 
@@ -39,7 +41,7 @@ async def auth_callback(request: Request, db: Session = Depends(get_db)):
         db.refresh(user)
 
     request.session["user_id"] = user.id
-    return {"status": "logged in", "email": user.email}
+    return RedirectResponse(url=settings.frontend_url)
 
 
 @router.post("/logout")
@@ -49,11 +51,5 @@ async def logout(request: Request):
 
 
 @router.get("/me")
-async def me(request: Request, db: Session = Depends(get_db)):
-    user_id = request.session.get("user_id")
-    if user_id is None:
-        raise HTTPException(status_code=401, detail="Not logged in")
-    user = db.get(User, user_id)
-    if user is None:
-        raise HTTPException(status_code=401, detail="Not logged in")
+async def me(user: User = Depends(get_current_user)):
     return {"id": user.id, "email": user.email}

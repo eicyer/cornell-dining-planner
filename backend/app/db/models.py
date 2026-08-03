@@ -53,6 +53,10 @@ class UserPreference(Base):
     protein_goal_g: Mapped[int] = mapped_column(Integer)
     carb_goal_g: Mapped[int] = mapped_column(Integer)
     fat_goal_g: Mapped[int] = mapped_column(Integer)
+    # Goals above are daily; meal crafting needs a per-meal slice of them.
+    # A flat divisor is a deliberate MVP simplification, not a real model of
+    # how someone eats across a day — see docs/adr/0008-meal-crafting-target.
+    meals_per_day: Mapped[int] = mapped_column(Integer, default=3)
 
     diet_restrictions: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
     allergens: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
