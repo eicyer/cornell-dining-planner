@@ -21,7 +21,7 @@ type Screen =
   | { kind: 'loading' }
   | { kind: 'error'; message: string }
   | { kind: 'logged_out' }
-  | { kind: 'survey' }
+  | { kind: 'survey'; existing: Preferences | null }
   | { kind: 'crafted'; eateries: EateryCrafted[] }
   | { kind: 'diary' }
   | { kind: 'eateryDetail'; eatery: EateryMenu };
@@ -60,7 +60,7 @@ export default function App() {
 
       const prefs: Preferences | null = await getPreferences();
       if (!prefs) {
-        setScreen({ kind: 'survey' });
+        setScreen({ kind: 'survey', existing: null });
         return;
       }
 
@@ -79,6 +79,15 @@ export default function App() {
         return;
       }
       setScreen({ kind: 'eateryDetail', eatery });
+    } catch (err: any) {
+      setScreen({ kind: 'error', message: err.message });
+    }
+  }
+
+  async function handleUpdatePreferences() {
+    try {
+      const prefs = await getPreferences();
+      setScreen({ kind: 'survey', existing: prefs });
     } catch (err: any) {
       setScreen({ kind: 'error', message: err.message });
     }
@@ -137,13 +146,15 @@ export default function App() {
   if (screen.kind === 'survey') {
     return (
       <View style={styles.surveyContainer}>
-        <PreferencesForm onSaved={loadCraftedMeals} />
+        <PreferencesForm initial={screen.existing} onSaved={loadCraftedMeals} />
       </View>
     );
   }
 
   if (screen.kind === 'diary') {
-    return <DiaryScreen onGoToToday={loadCraftedMeals} onLogout={handleLogout} />;
+    return (
+      <DiaryScreen onGoToToday={loadCraftedMeals} onLogout={handleLogout} onUpdatePreferences={handleUpdatePreferences} />
+    );
   }
 
   if (screen.kind === 'eateryDetail') {
@@ -162,6 +173,7 @@ export default function App() {
       onGoToDiary={() => setScreen({ kind: 'diary' })}
       onSelectEatery={handleSelectEatery}
       onLogout={handleLogout}
+      onUpdatePreferences={handleUpdatePreferences}
     />
   );
 }

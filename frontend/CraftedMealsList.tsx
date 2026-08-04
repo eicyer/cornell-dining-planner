@@ -23,11 +23,13 @@ export default function CraftedMealsList({
   onGoToDiary,
   onSelectEatery,
   onLogout,
+  onUpdatePreferences,
 }: {
   eateries: EateryCrafted[];
   onGoToDiary: () => void;
   onSelectEatery: (eateryId: number) => void;
   onLogout: () => void;
+  onUpdatePreferences: () => void;
 }) {
   const [logStatus, setLogStatus] = useState<Record<number, LogStatus>>({});
 
@@ -54,6 +56,9 @@ export default function CraftedMealsList({
           <Text style={styles.title}>Today's Meals For You</Text>
         </View>
         <View style={styles.navLinks}>
+          <Pressable onPress={onUpdatePreferences}>
+            <Text style={styles.navLink}>Preferences</Text>
+          </Pressable>
           <Pressable onPress={onGoToDiary}>
             <Text style={styles.navLink}>Diary</Text>
           </Pressable>

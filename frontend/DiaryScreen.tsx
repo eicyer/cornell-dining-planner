@@ -3,7 +3,15 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { DaySummary, LoggedMeal, getLoggedMealsSummary, getLoggedMealsToday, rateMeal } from './api';
 import { colors, radius, space, type } from './theme';
 
-export default function DiaryScreen({ onGoToToday, onLogout }: { onGoToToday: () => void; onLogout: () => void }) {
+export default function DiaryScreen({
+  onGoToToday,
+  onLogout,
+  onUpdatePreferences,
+}: {
+  onGoToToday: () => void;
+  onLogout: () => void;
+  onUpdatePreferences: () => void;
+}) {
   const [meals, setMeals] = useState<LoggedMeal[] | null>(null);
   const [summary, setSummary] = useState<DaySummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +61,9 @@ export default function DiaryScreen({ onGoToToday, onLogout }: { onGoToToday: ()
         <View style={styles.navLinks}>
           <Pressable onPress={onGoToToday}>
             <Text style={styles.navLink}>Today's Meals</Text>
+          </Pressable>
+          <Pressable onPress={onUpdatePreferences}>
+            <Text style={styles.navLink}>Preferences</Text>
           </Pressable>
           <Pressable onPress={onLogout}>
             <Text style={styles.navLink}>Log out</Text>

@@ -39,8 +39,15 @@ function NumberField({ label, value, onChange }: { label: string; value: number;
   );
 }
 
-export default function PreferencesForm({ onSaved }: { onSaved: (prefs: Preferences) => void }) {
-  const [prefs, setPrefs] = useState<Preferences>(DEFAULTS);
+export default function PreferencesForm({
+  initial,
+  onSaved,
+}: {
+  initial?: Preferences | null;
+  onSaved: (prefs: Preferences) => void;
+}) {
+  const isUpdate = !!initial;
+  const [prefs, setPrefs] = useState<Preferences>(initial ?? DEFAULTS);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,7 +70,7 @@ export default function PreferencesForm({ onSaved }: { onSaved: (prefs: Preferen
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Set your goals</Text>
+      <Text style={styles.title}>{isUpdate ? 'Update your goals' : 'Set your goals'}</Text>
       <Text style={styles.subtitle}>Daily targets — we'll split them across your meals.</Text>
 
       <NumberField label="Calories" value={prefs.calorie_goal} onChange={(v) => setPrefs({ ...prefs, calorie_goal: v })} />
@@ -119,7 +126,9 @@ export default function PreferencesForm({ onSaved }: { onSaved: (prefs: Preferen
       {error && <Text style={styles.error}>{error}</Text>}
 
       <Pressable style={styles.saveButton} onPress={handleSave} disabled={saving}>
-        <Text style={styles.saveButtonText}>{saving ? 'Saving…' : 'Save & see meals →'}</Text>
+        <Text style={styles.saveButtonText}>
+          {saving ? 'Saving…' : isUpdate ? 'Save changes →' : 'Save & see meals →'}
+        </Text>
       </Pressable>
     </View>
   );
