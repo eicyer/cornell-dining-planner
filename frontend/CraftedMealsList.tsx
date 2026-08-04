@@ -1,8 +1,16 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { EateryCrafted, logMeal } from './api';
+import { CraftedItem, EateryCrafted, logMeal } from './api';
+import PlateVisual from './PlateVisual';
+import { assignPlateColors } from './foodColors';
 
 type LogStatus = 'idle' | 'saving' | 'done' | 'error';
+
+const SALAD_SOUP_CATEGORIES = new Set(['salad', 'soup']);
+
+function isSaladOrSoup(item: CraftedItem): boolean {
+  return SALAD_SOUP_CATEGORIES.has(item.category.toLowerCase());
+}
 
 export default function CraftedMealsList({
   eateries,
@@ -49,41 +57,72 @@ export default function CraftedMealsList({
 
             {!eatery.crafted_meal ? (
               <Text style={styles.unavailable}>{eatery.reason_unavailable ?? 'Not available today'}</Text>
-            ) : (
-              <View style={styles.meal}>
-                <Text style={styles.mealPeriod}>{eatery.meal_period}</Text>
-                <Text style={styles.mealName}>{eatery.crafted_meal.name}</Text>
-                <Text style={styles.rationale}>{eatery.crafted_meal.rationale}</Text>
+            ) : (() => {
+              const mealItems = eatery.crafted_meal.items;
+              const mainItems = mealItems.filter((i) => !isSaladOrSoup(i));
+              const sideItems = mealItems.filter(isSaladOrSoup);
+              const mainColors = assignPlateColors(mainItems);
+              const sideColors = assignPlateColors(sideItems);
+              const colorFor = (item: CraftedItem) => (isSaladOrSoup(item) ? sideColors : mainColors)[item.name] ?? '#9ca3af';
 
-                {eatery.crafted_meal.items.map((item) => (
-                  <View key={item.name} style={styles.item}>
-                    <Text style={styles.itemName}>
-                      {item.name} <Text style={styles.itemGrams}>({Math.round(item.grams)}g)</Text>
-                    </Text>
-                    <Text style={styles.itemCalories}>{Math.round(item.calories)} cal</Text>
+              return (
+                <View style={styles.meal}>
+                  <Text style={styles.mealPeriod}>{eatery.meal_period}</Text>
+
+                  <View style={styles.mealHeader}>
+                    <View style={styles.platesRow}>
+                      {mainItems.length > 0 && (
+                        <View style={styles.plateBlock}>
+                          <PlateVisual items={mainItems} colors={mainColors} />
+                          <Text style={styles.plateLabel}>Meal</Text>
+                        </View>
+                      )}
+                      {sideItems.length > 0 && (
+                        <View style={styles.plateBlock}>
+                          <PlateVisual items={sideItems} colors={sideColors} size={64} />
+                          <Text style={styles.plateLabel}>Salad/Soup</Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.mealHeaderText}>
+                      <Text style={styles.mealName}>{eatery.crafted_meal.name}</Text>
+                      <Text style={styles.rationale}>{eatery.crafted_meal.rationale}</Text>
+                    </View>
                   </View>
-                ))}
 
-                <View style={styles.totals}>
-                  <Text style={styles.totalsText}>
-                    {Math.round(eatery.crafted_meal.totals.calories)} cal ·{' '}
-                    {Math.round(eatery.crafted_meal.totals.protein_g)}g protein ·{' '}
-                    {Math.round(eatery.crafted_meal.totals.carbs_g)}g carbs ·{' '}
-                    {Math.round(eatery.crafted_meal.totals.fat_g)}g fat
-                  </Text>
+                  {mealItems.map((item) => (
+                    <View key={item.name} style={styles.item}>
+                      <View style={styles.itemNameRow}>
+                        <View style={[styles.colorDot, { backgroundColor: colorFor(item) }]} />
+                        <Text style={styles.itemName}>
+                          {item.name} <Text style={styles.itemGrams}>({Math.round(item.grams)}g)</Text>
+                        </Text>
+                      </View>
+                      <Text style={styles.itemCalories}>{Math.round(item.calories)} cal</Text>
+                    </View>
+                  ))}
+
+                  <View style={styles.totals}>
+                    <Text style={styles.totalsText}>
+                      {Math.round(eatery.crafted_meal.totals.calories)} cal ·{' '}
+                      {Math.round(eatery.crafted_meal.totals.protein_g)}g protein ·{' '}
+                      {Math.round(eatery.crafted_meal.totals.carbs_g)}g carbs ·{' '}
+                      {Math.round(eatery.crafted_meal.totals.fat_g)}g fat
+                    </Text>
+                  </View>
+
+                  <Pressable
+                    style={[styles.logButton, status === 'done' && styles.logButtonDone]}
+                    onPress={() => handleLog(eatery)}
+                    disabled={status === 'saving' || status === 'done'}
+                  >
+                    <Text style={styles.logButtonText}>
+                      {status === 'saving' ? 'Logging…' : status === 'done' ? 'Logged ✓' : status === 'error' ? 'Failed — try again' : 'Log this meal'}
+                    </Text>
+                  </Pressable>
                 </View>
-
-                <Pressable
-                  style={[styles.logButton, status === 'done' && styles.logButtonDone]}
-                  onPress={() => handleLog(eatery)}
-                  disabled={status === 'saving' || status === 'done'}
-                >
-                  <Text style={styles.logButtonText}>
-                    {status === 'saving' ? 'Logging…' : status === 'done' ? 'Logged ✓' : status === 'error' ? 'Failed — try again' : 'Log this meal'}
-                  </Text>
-                </Pressable>
-              </View>
-            )}
+              );
+            })()}
           </View>
         );
       })}
@@ -102,10 +141,17 @@ const styles = StyleSheet.create({
   unavailable: { color: '#9ca3af', fontStyle: 'italic' },
   meal: { marginTop: 4 },
   mealPeriod: { fontSize: 12, fontWeight: '600', color: '#9ca3af', textTransform: 'uppercase' },
-  mealName: { fontSize: 16, fontWeight: '600', marginTop: 2, marginBottom: 2 },
-  rationale: { fontSize: 13, color: '#6b7280', marginBottom: 8, fontStyle: 'italic' },
-  item: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2 },
-  itemName: { fontSize: 14, flexShrink: 1, paddingRight: 8 },
+  mealHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4, marginBottom: 8 },
+  platesRow: { flexDirection: 'row', gap: 8 },
+  plateBlock: { alignItems: 'center' },
+  plateLabel: { fontSize: 10, color: '#9ca3af', marginTop: 2 },
+  mealHeaderText: { flex: 1 },
+  mealName: { fontSize: 16, fontWeight: '600', marginBottom: 2 },
+  rationale: { fontSize: 13, color: '#6b7280', fontStyle: 'italic' },
+  item: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 2 },
+  itemNameRow: { flexDirection: 'row', alignItems: 'center', flexShrink: 1, paddingRight: 8 },
+  colorDot: { width: 9, height: 9, borderRadius: 5, marginRight: 6, flexShrink: 0 },
+  itemName: { fontSize: 14, flexShrink: 1 },
   itemGrams: { color: '#9ca3af' },
   itemCalories: { fontSize: 14, color: '#6b7280' },
   totals: { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#f3f4f6' },
