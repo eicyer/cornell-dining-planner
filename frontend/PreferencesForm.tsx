@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ALLERGENS, DIET_TAGS, Preferences, putPreferences } from './api';
+import { colors, radius, space, type } from './theme';
 
 const DEFAULTS: Preferences = {
   calorie_goal: 2200,
@@ -100,6 +101,7 @@ export default function PreferencesForm({ onSaved }: { onSaved: (prefs: Preferen
         style={styles.textArea}
         multiline
         placeholder="e.g. chicken, spicy food, Asian flavors"
+        placeholderTextColor={colors.inkTertiary}
         value={prefs.liked_foods_text ?? ''}
         onChangeText={(text) => setPrefs({ ...prefs, liked_foods_text: text })}
       />
@@ -109,6 +111,7 @@ export default function PreferencesForm({ onSaved }: { onSaved: (prefs: Preferen
         style={styles.textArea}
         multiline
         placeholder="e.g. mushrooms, seafood"
+        placeholderTextColor={colors.inkTertiary}
         value={prefs.disliked_foods_text ?? ''}
         onChangeText={(text) => setPrefs({ ...prefs, disliked_foods_text: text })}
       />
@@ -116,7 +119,7 @@ export default function PreferencesForm({ onSaved }: { onSaved: (prefs: Preferen
       {error && <Text style={styles.error}>{error}</Text>}
 
       <Pressable style={styles.saveButton} onPress={handleSave} disabled={saving}>
-        <Text style={styles.saveButtonText}>{saving ? 'Saving…' : 'Save & see meals'}</Text>
+        <Text style={styles.saveButtonText}>{saving ? 'Saving…' : 'Save & see meals →'}</Text>
       </Pressable>
     </View>
   );
@@ -124,48 +127,49 @@ export default function PreferencesForm({ onSaved }: { onSaved: (prefs: Preferen
 
 const styles = StyleSheet.create({
   container: { paddingBottom: 40 },
-  title: { fontSize: 22, fontWeight: '700', marginBottom: 4 },
-  subtitle: { fontSize: 14, color: '#6b7280', marginBottom: 20 },
-  field: { marginBottom: 12 },
-  label: { fontSize: 14, fontWeight: '600', color: '#374151', marginTop: 8, marginBottom: 6 },
+  title: { fontFamily: 'Fraunces_700Bold', fontSize: 26, lineHeight: 32, color: colors.ink, marginBottom: space.xs },
+  subtitle: { ...type.body, color: colors.inkSecondary, marginBottom: space.xl },
+  field: { marginBottom: space.md },
+  label: { ...type.kicker, marginTop: space.sm, marginBottom: space.sm },
   numberInput: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.ink,
+    borderRadius: radius.none,
+    paddingVertical: space.sm,
+    fontFamily: 'IBMPlexMono_400Regular',
+    fontSize: 17,
+    color: colors.ink,
     width: 120,
   },
   textArea: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.hairline,
+    borderRadius: radius.none,
+    paddingVertical: space.sm,
+    fontFamily: 'Archivo_400Regular',
     fontSize: 14,
-    minHeight: 60,
+    color: colors.ink,
+    minHeight: 52,
     textAlignVertical: 'top',
   },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.md },
   chip: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginRight: 6,
-    marginBottom: 6,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+    paddingVertical: space.xs,
+    marginRight: space.xs,
+    marginBottom: space.xs,
   },
-  chipSelected: { backgroundColor: '#111827', borderColor: '#111827' },
-  chipText: { fontSize: 13, color: '#374151', textTransform: 'capitalize' },
-  chipTextSelected: { color: '#fff' },
-  error: { color: '#b91c1c', marginTop: 12 },
+  chipSelected: { borderBottomColor: colors.accent },
+  chipText: { ...type.body, fontSize: 13, color: colors.inkSecondary, textTransform: 'capitalize' },
+  chipTextSelected: { color: colors.ink, fontFamily: 'Archivo_600SemiBold' },
+  error: { ...type.body, color: colors.accent, marginTop: space.md },
   saveButton: {
-    backgroundColor: '#111827',
-    borderRadius: 8,
+    backgroundColor: colors.accent,
+    borderRadius: radius.none,
     paddingVertical: 14,
     alignItems: 'center',
-    marginTop: 20,
+    marginTop: space.xl,
   },
-  saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  saveButtonText: { ...type.button },
 });

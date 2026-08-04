@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { CraftedItem, EateryCrafted, logMeal } from './api';
 import PlateVisual from './PlateVisual';
 import { assignPlateColors } from './foodColors';
+import { colors, radius, space, type } from './theme';
 
 type LogStatus = 'idle' | 'saving' | 'done' | 'error';
 
@@ -10,6 +11,11 @@ const SALAD_SOUP_CATEGORIES = new Set(['salad', 'soup']);
 
 function isSaladOrSoup(item: CraftedItem): boolean {
   return SALAD_SOUP_CATEGORIES.has(item.category.toLowerCase());
+}
+
+function todayKicker(): string {
+  const weekday = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+  return `Cornell Dining · ${weekday}`;
 }
 
 export default function CraftedMealsList({
@@ -41,7 +47,10 @@ export default function CraftedMealsList({
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.nav}>
-        <Text style={styles.title}>Today's Meals For You</Text>
+        <View>
+          <Text style={styles.kicker}>{todayKicker()}</Text>
+          <Text style={styles.title}>Today's Meals For You</Text>
+        </View>
         <Pressable onPress={onGoToDiary}>
           <Text style={styles.navLink}>Diary</Text>
         </Pressable>
@@ -52,7 +61,7 @@ export default function CraftedMealsList({
         return (
           <View key={eatery.id} style={styles.eatery}>
             <Pressable onPress={() => onSelectEatery(eatery.id)}>
-              <Text style={styles.eateryName}>{eatery.name} →</Text>
+              <Text style={styles.eateryName}>{eatery.name}</Text>
             </Pressable>
 
             {!eatery.crafted_meal ? (
@@ -63,7 +72,8 @@ export default function CraftedMealsList({
               const sideItems = mealItems.filter(isSaladOrSoup);
               const mainColors = assignPlateColors(mainItems);
               const sideColors = assignPlateColors(sideItems);
-              const colorFor = (item: CraftedItem) => (isSaladOrSoup(item) ? sideColors : mainColors)[item.name] ?? '#9ca3af';
+              const colorFor = (item: CraftedItem) =>
+                (isSaladOrSoup(item) ? sideColors : mainColors)[item.name] ?? colors.neutralFallback;
 
               return (
                 <View style={styles.meal}>
@@ -104,9 +114,8 @@ export default function CraftedMealsList({
 
                   <View style={styles.totals}>
                     <Text style={styles.totalsText}>
-                      {Math.round(eatery.crafted_meal.totals.calories)} cal ·{' '}
-                      {Math.round(eatery.crafted_meal.totals.protein_g)}g protein ·{' '}
-                      {Math.round(eatery.crafted_meal.totals.carbs_g)}g carbs ·{' '}
+                      {Math.round(eatery.crafted_meal.totals.calories)} cal · {Math.round(eatery.crafted_meal.totals.protein_g)}g
+                      protein · {Math.round(eatery.crafted_meal.totals.carbs_g)}g carbs ·{' '}
                       {Math.round(eatery.crafted_meal.totals.fat_g)}g fat
                     </Text>
                   </View>
@@ -116,8 +125,14 @@ export default function CraftedMealsList({
                     onPress={() => handleLog(eatery)}
                     disabled={status === 'saving' || status === 'done'}
                   >
-                    <Text style={styles.logButtonText}>
-                      {status === 'saving' ? 'Logging…' : status === 'done' ? 'Logged ✓' : status === 'error' ? 'Failed — try again' : 'Log this meal'}
+                    <Text style={[styles.logButtonText, status === 'done' && styles.logButtonTextDone]}>
+                      {status === 'saving'
+                        ? 'Logging…'
+                        : status === 'done'
+                        ? 'Logged ✓'
+                        : status === 'error'
+                        ? 'Failed — try again'
+                        : 'Log this meal →'}
                     </Text>
                   </Pressable>
                 </View>
@@ -131,32 +146,45 @@ export default function CraftedMealsList({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+  container: { flex: 1, backgroundColor: colors.paper },
   content: { padding: 16, paddingTop: 56, maxWidth: 640, width: '100%', alignSelf: 'center' },
-  nav: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  title: { fontSize: 24, fontWeight: '700' },
-  navLink: { fontSize: 14, fontWeight: '600', color: '#111827' },
-  eatery: { marginBottom: 24, borderBottomWidth: 1, borderBottomColor: '#e5e7eb', paddingBottom: 16 },
-  eateryName: { fontSize: 18, fontWeight: '600', marginBottom: 4 },
-  unavailable: { color: '#9ca3af', fontStyle: 'italic' },
-  meal: { marginTop: 4 },
-  mealPeriod: { fontSize: 12, fontWeight: '600', color: '#9ca3af', textTransform: 'uppercase' },
-  mealHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4, marginBottom: 8 },
-  platesRow: { flexDirection: 'row', gap: 8 },
+  nav: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: space.xxl },
+  kicker: { ...type.kicker, marginBottom: space.xs },
+  title: { fontFamily: 'Fraunces_700Bold', fontSize: 30, lineHeight: 36, color: colors.ink },
+  navLink: { ...type.kicker, color: colors.accent },
+  eatery: {
+    marginBottom: space.xxl,
+    paddingBottom: space.xl,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.hairline,
+  },
+  eateryName: { fontFamily: 'Fraunces_600SemiBold', fontSize: 21, color: colors.ink, marginBottom: space.xs },
+  unavailable: { fontFamily: 'Fraunces_500Medium_Italic', fontSize: 15, color: colors.inkSecondary },
+  meal: { marginTop: space.xs },
+  mealPeriod: { ...type.kicker },
+  mealHeader: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginTop: space.xs, marginBottom: space.md },
+  platesRow: { flexDirection: 'row', gap: space.sm },
   plateBlock: { alignItems: 'center' },
-  plateLabel: { fontSize: 10, color: '#9ca3af', marginTop: 2 },
+  plateLabel: { ...type.caption, marginTop: space.xs },
   mealHeaderText: { flex: 1 },
-  mealName: { fontSize: 16, fontWeight: '600', marginBottom: 2 },
-  rationale: { fontSize: 13, color: '#6b7280', fontStyle: 'italic' },
-  item: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 2 },
-  itemNameRow: { flexDirection: 'row', alignItems: 'center', flexShrink: 1, paddingRight: 8 },
-  colorDot: { width: 9, height: 9, borderRadius: 5, marginRight: 6, flexShrink: 0 },
-  itemName: { fontSize: 14, flexShrink: 1 },
-  itemGrams: { color: '#9ca3af' },
-  itemCalories: { fontSize: 14, color: '#6b7280' },
-  totals: { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#f3f4f6' },
-  totalsText: { fontSize: 13, fontWeight: '600', color: '#374151' },
-  logButton: { marginTop: 12, backgroundColor: '#111827', borderRadius: 8, paddingVertical: 10, alignItems: 'center' },
-  logButtonDone: { backgroundColor: '#059669' },
-  logButtonText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  mealName: { fontFamily: 'Fraunces_600SemiBold', fontSize: 19, color: colors.ink, marginBottom: space.xs },
+  rationale: { fontFamily: 'Fraunces_500Medium_Italic', fontSize: 14, color: colors.inkSecondary },
+  item: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 3 },
+  itemNameRow: { flexDirection: 'row', alignItems: 'center', flexShrink: 1, paddingRight: space.sm },
+  colorDot: { width: 9, height: 9, borderRadius: 5, marginRight: space.sm, flexShrink: 0 },
+  itemName: { ...type.body, fontSize: 14, flexShrink: 1 },
+  itemGrams: { fontFamily: 'IBMPlexMono_400Regular', color: colors.inkSecondary, fontSize: 13 },
+  itemCalories: { fontFamily: 'IBMPlexMono_400Regular', fontSize: 13, color: colors.inkSecondary },
+  totals: { marginTop: space.sm, paddingTop: space.sm, borderTopWidth: 1, borderTopColor: colors.hairline },
+  totalsText: { ...type.monoEmphasis },
+  logButton: {
+    marginTop: space.md,
+    backgroundColor: colors.accent,
+    borderRadius: radius.none,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  logButtonDone: { backgroundColor: colors.paper, borderWidth: 1, borderColor: colors.accent },
+  logButtonText: { ...type.button, fontSize: 14 },
+  logButtonTextDone: { color: colors.accent },
 });

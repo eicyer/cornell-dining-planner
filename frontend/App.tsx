@@ -1,10 +1,21 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useFonts } from 'expo-font';
+import {
+  Fraunces_500Medium,
+  Fraunces_500Medium_Italic,
+  Fraunces_600SemiBold,
+  Fraunces_600SemiBold_Italic,
+  Fraunces_700Bold,
+} from '@expo-google-fonts/fraunces';
+import { Archivo_400Regular, Archivo_500Medium, Archivo_600SemiBold } from '@expo-google-fonts/archivo';
+import { IBMPlexMono_400Regular, IBMPlexMono_500Medium } from '@expo-google-fonts/ibm-plex-mono';
 import { EateryCrafted, EateryMenu, Me, Preferences, getCraftedMealsToday, getMe, getMenusToday, getPreferences, loginUrl } from './api';
 import PreferencesForm from './PreferencesForm';
 import CraftedMealsList from './CraftedMealsList';
 import DiaryScreen from './DiaryScreen';
 import EateryDetailScreen from './EateryDetailScreen';
+import { colors, fonts, radius, type } from './theme';
 
 type Screen =
   | { kind: 'loading' }
@@ -17,6 +28,18 @@ type Screen =
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>({ kind: 'loading' });
+  const [fontsLoaded, fontError] = useFonts({
+    Fraunces_500Medium,
+    Fraunces_500Medium_Italic,
+    Fraunces_600SemiBold,
+    Fraunces_600SemiBold_Italic,
+    Fraunces_700Bold,
+    Archivo_400Regular,
+    Archivo_500Medium,
+    Archivo_600SemiBold,
+    IBMPlexMono_400Regular,
+    IBMPlexMono_500Medium,
+  });
 
   async function loadCraftedMeals() {
     try {
@@ -65,10 +88,18 @@ export default function App() {
     bootstrap();
   }, []);
 
+  if (!fontsLoaded && !fontError) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={colors.accent} />
+      </View>
+    );
+  }
+
   if (screen.kind === 'loading') {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
@@ -85,9 +116,10 @@ export default function App() {
   if (screen.kind === 'logged_out') {
     return (
       <View style={styles.center}>
-        <Text style={styles.title}>Cornell Dining Planner</Text>
+        <Text style={styles.kicker}>Cornell Dining</Text>
+        <Text style={styles.title}>Plan your plate.</Text>
         <Pressable style={styles.loginButton} onPress={() => Linking.openURL(loginUrl())}>
-          <Text style={styles.loginButtonText}>Sign in with Google</Text>
+          <Text style={styles.loginButtonText}>Sign in with Google →</Text>
         </Pressable>
       </View>
     );
@@ -130,6 +162,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
+    backgroundColor: colors.paper,
   },
   surveyContainer: {
     flex: 1,
@@ -138,31 +171,34 @@ const styles = StyleSheet.create({
     maxWidth: 640,
     width: '100%',
     alignSelf: 'center',
+    backgroundColor: colors.paper,
   },
   error: {
-    color: '#b91c1c',
-    fontSize: 16,
+    ...type.body,
+    color: colors.accent,
     textAlign: 'center',
   },
   errorHint: {
-    color: '#6b7280',
+    ...type.body,
+    color: colors.inkSecondary,
     marginTop: 8,
     textAlign: 'center',
   },
+  kicker: {
+    ...type.kicker,
+    marginBottom: 8,
+  },
   title: {
-    fontSize: 24,
-    fontWeight: '700',
+    ...type.display,
     marginBottom: 24,
   },
   loginButton: {
-    backgroundColor: '#111827',
-    borderRadius: 8,
+    backgroundColor: colors.accent,
+    borderRadius: radius.none,
     paddingVertical: 14,
     paddingHorizontal: 24,
   },
   loginButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    ...type.button,
   },
 });

@@ -1,5 +1,6 @@
 import Svg, { Circle, Path } from 'react-native-svg';
 import { StyleSheet, View } from 'react-native';
+import { colors as theme } from './theme';
 
 function polarToCartesian(cx: number, cy: number, r: number, angleDeg: number) {
   const rad = ((angleDeg - 90) * Math.PI) / 180;
@@ -35,7 +36,7 @@ export default function PlateVisual({
     const portioned = items.filter((i) => i.grams > 0);
     for (const item of portioned) {
       const sliceAngle = (item.grams / total) * 360;
-      const color = colors[item.name] ?? '#9ca3af';
+      const color = colors[item.name] ?? theme.neutralFallback;
       if (portioned.length === 1) {
         fullCircleColor = color;
       } else {
@@ -48,9 +49,9 @@ export default function PlateVisual({
   return (
     <View style={styles.wrap}>
       <Svg width={size} height={size}>
-        <Circle cx={cx} cy={cy} r={plateR} fill="#fafafa" stroke="#d1d5db" strokeWidth={2} />
+        <Circle cx={cx} cy={cy} r={plateR} fill="#F1EADA" stroke={theme.hairline} strokeWidth={2} />
         {total === 0 ? (
-          <Circle cx={cx} cy={cy} r={foodR} fill="#e5e7eb" />
+          <Circle cx={cx} cy={cy} r={foodR} fill="#E4DCC8" />
         ) : fullCircleColor ? (
           <Circle cx={cx} cy={cy} r={foodR} fill={fullCircleColor} />
         ) : (

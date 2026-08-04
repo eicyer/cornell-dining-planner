@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { DaySummary, LoggedMeal, getLoggedMealsSummary, getLoggedMealsToday, rateMeal } from './api';
+import { colors, radius, space, type } from './theme';
 
 export default function DiaryScreen({ onGoToToday }: { onGoToToday: () => void }) {
   const [meals, setMeals] = useState<LoggedMeal[] | null>(null);
@@ -38,7 +39,7 @@ export default function DiaryScreen({ onGoToToday }: { onGoToToday: () => void }
   if (!meals || !summary) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
@@ -54,7 +55,7 @@ export default function DiaryScreen({ onGoToToday }: { onGoToToday: () => void }
         </Pressable>
       </View>
 
-      <View style={styles.progressCard}>
+      <View style={styles.progressSection}>
         <Text style={styles.progressTitle}>Today so far</Text>
         <ProgressRow label="Calories" value={today.totals.calories} goal={today.goal.calories} />
         <ProgressRow label="Protein" value={today.totals.protein_g} goal={today.goal.protein_g} unit="g" />
@@ -83,7 +84,10 @@ export default function DiaryScreen({ onGoToToday }: { onGoToToday: () => void }
             </View>
             {meal.items.map((item) => (
               <Text key={item.name} style={styles.itemText}>
-                {item.name} ({Math.round(item.grams)}g) — {Math.round(item.calories)} cal
+                {item.name}{' '}
+                <Text style={styles.itemFigures}>
+                  ({Math.round(item.grams)}g) — {Math.round(item.calories)} cal
+                </Text>
               </Text>
             ))}
             <Text style={styles.mealTotals}>
@@ -110,11 +114,14 @@ function ProgressRow({ label, value, goal, unit = '' }: { label: string; value: 
   const pct = goal > 0 ? Math.min(100, Math.round((value / goal) * 100)) : 0;
   return (
     <View style={styles.progressRow}>
-      <Text style={styles.progressLabel}>
-        {label}: {Math.round(value)}
-        {unit} / {Math.round(goal)}
-        {unit}
-      </Text>
+      <View style={styles.progressLabelRow}>
+        <Text style={styles.progressLabel}>{label}</Text>
+        <Text style={styles.progressFigures}>
+          {Math.round(value)}
+          {unit} / {Math.round(goal)}
+          {unit}
+        </Text>
+      </View>
       <View style={styles.progressBarTrack}>
         <View style={[styles.progressBarFill, { width: `${pct}%` }]} />
       </View>
@@ -123,30 +130,55 @@ function ProgressRow({ label, value, goal, unit = '' }: { label: string; value: 
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+  container: { flex: 1, backgroundColor: colors.paper },
   content: { padding: 16, paddingTop: 56, paddingBottom: 40, maxWidth: 640, width: '100%', alignSelf: 'center' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  error: { color: '#b91c1c', textAlign: 'center' },
-  nav: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  title: { fontSize: 24, fontWeight: '700' },
-  navLink: { fontSize: 14, fontWeight: '600', color: '#111827' },
-  progressCard: { backgroundColor: '#f9fafb', borderRadius: 12, padding: 16, marginBottom: 24 },
-  progressTitle: { fontSize: 14, fontWeight: '600', marginBottom: 12 },
-  progressRow: { marginBottom: 10 },
-  progressLabel: { fontSize: 13, color: '#374151', marginBottom: 4 },
-  progressBarTrack: { height: 6, borderRadius: 3, backgroundColor: '#e5e7eb', overflow: 'hidden' },
-  progressBarFill: { height: 6, backgroundColor: '#111827' },
-  sectionTitle: { fontSize: 16, fontWeight: '700', marginBottom: 10, marginTop: 8 },
-  empty: { color: '#9ca3af', fontStyle: 'italic', marginBottom: 16 },
-  mealCard: { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 10, padding: 12, marginBottom: 12 },
-  mealHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  mealEatery: { fontSize: 14, fontWeight: '600' },
-  rateButtons: { flexDirection: 'row', gap: 8 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: colors.paper },
+  error: { ...type.body, color: colors.accent, textAlign: 'center' },
+  nav: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: space.xl },
+  title: { ...type.display, fontSize: 28 },
+  navLink: { ...type.kicker, color: colors.accent },
+  progressSection: {
+    marginBottom: space.xxl,
+    paddingBottom: space.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.hairline,
+  },
+  progressTitle: { ...type.kicker, marginBottom: space.md },
+  progressRow: { marginBottom: space.md },
+  progressLabelRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: space.xs },
+  progressLabel: { ...type.body, fontSize: 14 },
+  progressFigures: { ...type.mono },
+  progressBarTrack: { height: 4, borderRadius: radius.none, backgroundColor: colors.disabled, overflow: 'hidden' },
+  progressBarFill: { height: 4, backgroundColor: colors.accent },
+  sectionTitle: {
+    ...type.kicker,
+    marginBottom: space.md,
+    marginTop: space.sm,
+    paddingBottom: space.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.hairline,
+  },
+  empty: { fontFamily: 'Fraunces_500Medium_Italic', fontSize: 15, color: colors.inkSecondary, marginBottom: space.lg },
+  mealCard: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.hairline,
+    paddingVertical: space.lg,
+  },
+  mealHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: space.sm },
+  mealEatery: { fontFamily: 'Fraunces_600SemiBold', fontSize: 16, color: colors.ink },
+  rateButtons: { flexDirection: 'row', gap: space.sm },
   rateButton: { fontSize: 16, opacity: 0.35 },
   rateButtonActive: { opacity: 1 },
-  itemText: { fontSize: 13, color: '#4b5563' },
-  mealTotals: { fontSize: 13, fontWeight: '600', marginTop: 6, color: '#374151' },
-  weekRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' },
-  weekDate: { fontSize: 13, color: '#374151' },
-  weekCalories: { fontSize: 13, color: '#6b7280' },
+  itemText: { ...type.body, fontSize: 14 },
+  itemFigures: { ...type.mono, fontSize: 13 },
+  mealTotals: { ...type.monoEmphasis, marginTop: space.sm },
+  weekRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: space.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.hairline,
+  },
+  weekDate: { ...type.body, fontSize: 13, color: colors.inkSecondary },
+  weekCalories: { ...type.mono },
 });

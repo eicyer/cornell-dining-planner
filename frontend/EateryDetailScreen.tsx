@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { EateryMenu, LoggedMeal, logMeal } from './api';
+import { colors, radius, space, type } from './theme';
 
 export default function EateryDetailScreen({
   eatery,
@@ -57,7 +58,7 @@ export default function EateryDetailScreen({
   if (!event) {
     return (
       <View style={styles.center}>
-        <Text>Closed today</Text>
+        <Text style={type.body}>Closed today</Text>
         <Pressable onPress={onBack} style={styles.backButton}>
           <Text style={styles.backButtonText}>Back</Text>
         </Pressable>
@@ -69,7 +70,7 @@ export default function EateryDetailScreen({
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <Pressable onPress={onBack}>
-          <Text style={styles.back}>{'< Back'}</Text>
+          <Text style={styles.back}>{'← Back'}</Text>
         </Pressable>
         <Text style={styles.title}>{eatery.name}</Text>
 
@@ -98,6 +99,7 @@ export default function EateryDetailScreen({
                   style={styles.gramsInput}
                   keyboardType="numeric"
                   placeholder="0g"
+                  placeholderTextColor={colors.inkTertiary}
                   value={grams[item.name] ? String(grams[item.name]) : ''}
                   editable={!!item.nutrition}
                   onChangeText={(text) =>
@@ -117,7 +119,7 @@ export default function EateryDetailScreen({
           {Math.round(totals.protein_g)}g protein
         </Text>
         <Pressable style={[styles.logButton, itemCount === 0 && styles.logButtonDisabled]} onPress={handleLog} disabled={itemCount === 0 || saving}>
-          <Text style={styles.logButtonText}>{saving ? 'Logging…' : 'Log Meal'}</Text>
+          <Text style={styles.logButtonText}>{saving ? 'Logging…' : 'Log Meal →'}</Text>
         </Pressable>
       </View>
     </View>
@@ -125,29 +127,52 @@ export default function EateryDetailScreen({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+  container: { flex: 1, backgroundColor: colors.paper },
   content: { padding: 16, paddingTop: 56, paddingBottom: 24, maxWidth: 640, width: '100%', alignSelf: 'center' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  back: { color: '#6b7280', marginBottom: 8 },
-  backButton: { marginTop: 16, padding: 12 },
-  backButtonText: { color: '#111827', fontWeight: '600' },
-  title: { fontSize: 22, fontWeight: '700', marginBottom: 12 },
-  tabs: { flexDirection: 'row', marginBottom: 16, gap: 8 },
-  tab: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 16, borderWidth: 1, borderColor: '#d1d5db' },
-  tabActive: { backgroundColor: '#111827', borderColor: '#111827' },
-  tabText: { color: '#374151', fontSize: 13 },
-  tabTextActive: { color: '#fff' },
-  category: { marginBottom: 16 },
-  categoryTitle: { fontSize: 12, fontWeight: '600', color: '#9ca3af', textTransform: 'uppercase', marginBottom: 6 },
-  itemRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' },
-  itemInfo: { flex: 1, paddingRight: 12 },
-  itemName: { fontSize: 14 },
-  itemCalories: { fontSize: 12, color: '#9ca3af' },
-  gramsInput: { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 6, width: 64, textAlign: 'center', paddingVertical: 6 },
-  tray: { borderTopWidth: 1, borderTopColor: '#e5e7eb', padding: 16, backgroundColor: '#fff' },
-  trayText: { fontSize: 14, fontWeight: '600', marginBottom: 8, textAlign: 'center' },
-  error: { color: '#b91c1c', marginBottom: 8, textAlign: 'center' },
-  logButton: { backgroundColor: '#111827', borderRadius: 8, paddingVertical: 14, alignItems: 'center' },
-  logButtonDisabled: { backgroundColor: '#d1d5db' },
-  logButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.paper },
+  back: { ...type.body, fontSize: 13, color: colors.inkSecondary, marginBottom: space.sm },
+  backButton: { marginTop: space.lg, padding: space.md },
+  backButtonText: { ...type.body, color: colors.accent, fontFamily: 'Archivo_600SemiBold' },
+  title: { fontFamily: 'Fraunces_700Bold', fontSize: 30, lineHeight: 36, color: colors.ink, marginBottom: space.lg },
+  tabs: { flexDirection: 'row', marginBottom: space.xl, gap: space.lg },
+  tab: { paddingVertical: space.xs, borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  tabActive: { borderBottomColor: colors.accent },
+  tabText: { ...type.kicker },
+  tabTextActive: { color: colors.ink },
+  category: { marginBottom: space.xl },
+  categoryTitle: {
+    ...type.kicker,
+    marginBottom: space.sm,
+    paddingBottom: space.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.hairline,
+  },
+  itemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: space.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.hairline,
+  },
+  itemInfo: { flex: 1, paddingRight: space.md },
+  itemName: { ...type.body, fontSize: 14 },
+  itemCalories: { ...type.caption },
+  gramsInput: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.ink,
+    borderRadius: radius.none,
+    width: 56,
+    textAlign: 'center',
+    paddingVertical: space.xs,
+    fontFamily: 'IBMPlexMono_400Regular',
+    fontSize: 14,
+    color: colors.ink,
+  },
+  tray: { borderTopWidth: 1, borderTopColor: colors.hairline, padding: space.lg, backgroundColor: colors.paper },
+  trayText: { ...type.monoEmphasis, marginBottom: space.sm, textAlign: 'center' },
+  error: { ...type.body, color: colors.accent, marginBottom: space.sm, textAlign: 'center' },
+  logButton: { backgroundColor: colors.accent, borderRadius: radius.none, paddingVertical: 14, alignItems: 'center' },
+  logButtonDisabled: { backgroundColor: colors.disabled },
+  logButtonText: { ...type.button },
 });
