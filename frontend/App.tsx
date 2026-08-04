@@ -10,7 +10,7 @@ import {
 } from '@expo-google-fonts/fraunces';
 import { Archivo_400Regular, Archivo_500Medium, Archivo_600SemiBold } from '@expo-google-fonts/archivo';
 import { IBMPlexMono_400Regular, IBMPlexMono_500Medium } from '@expo-google-fonts/ibm-plex-mono';
-import { EateryCrafted, EateryMenu, Me, Preferences, getCraftedMealsToday, getMe, getMenusToday, getPreferences, loginUrl } from './api';
+import { EateryCrafted, EateryMenu, Me, Preferences, getCraftedMealsToday, getMe, getMenusToday, getPreferences, loginUrl, logout } from './api';
 import PreferencesForm from './PreferencesForm';
 import CraftedMealsList from './CraftedMealsList';
 import DiaryScreen from './DiaryScreen';
@@ -84,6 +84,15 @@ export default function App() {
     }
   }
 
+  async function handleLogout() {
+    try {
+      await logout();
+      setScreen({ kind: 'logged_out' });
+    } catch (err: any) {
+      setScreen({ kind: 'error', message: err.message });
+    }
+  }
+
   useEffect(() => {
     bootstrap();
   }, []);
@@ -134,7 +143,7 @@ export default function App() {
   }
 
   if (screen.kind === 'diary') {
-    return <DiaryScreen onGoToToday={loadCraftedMeals} />;
+    return <DiaryScreen onGoToToday={loadCraftedMeals} onLogout={handleLogout} />;
   }
 
   if (screen.kind === 'eateryDetail') {
@@ -152,6 +161,7 @@ export default function App() {
       eateries={screen.eateries}
       onGoToDiary={() => setScreen({ kind: 'diary' })}
       onSelectEatery={handleSelectEatery}
+      onLogout={handleLogout}
     />
   );
 }

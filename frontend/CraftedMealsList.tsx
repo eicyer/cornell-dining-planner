@@ -22,10 +22,12 @@ export default function CraftedMealsList({
   eateries,
   onGoToDiary,
   onSelectEatery,
+  onLogout,
 }: {
   eateries: EateryCrafted[];
   onGoToDiary: () => void;
   onSelectEatery: (eateryId: number) => void;
+  onLogout: () => void;
 }) {
   const [logStatus, setLogStatus] = useState<Record<number, LogStatus>>({});
 
@@ -51,9 +53,14 @@ export default function CraftedMealsList({
           <Text style={styles.kicker}>{todayKicker()}</Text>
           <Text style={styles.title}>Today's Meals For You</Text>
         </View>
-        <Pressable onPress={onGoToDiary}>
-          <Text style={styles.navLink}>Diary</Text>
-        </Pressable>
+        <View style={styles.navLinks}>
+          <Pressable onPress={onGoToDiary}>
+            <Text style={styles.navLink}>Diary</Text>
+          </Pressable>
+          <Pressable onPress={onLogout}>
+            <Text style={styles.navLink}>Log out</Text>
+          </Pressable>
+        </View>
       </View>
 
       {eateries.map((eatery) => {
@@ -151,6 +158,7 @@ const styles = StyleSheet.create({
   nav: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: space.xxl },
   kicker: { ...type.kicker, marginBottom: space.xs },
   title: { fontFamily: 'Fraunces_700Bold', fontSize: 30, lineHeight: 36, color: colors.ink },
+  navLinks: { flexDirection: 'row', gap: space.lg },
   navLink: { ...type.kicker, color: colors.accent },
   eatery: {
     marginBottom: space.xxl,

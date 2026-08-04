@@ -23,6 +23,11 @@ export async function getMe(): Promise<Me | null> {
   return res.json();
 }
 
+export async function logout(): Promise<void> {
+  const res = await apiFetch('/auth/logout', { method: 'POST' });
+  if (!res.ok) throw new Error(`POST /auth/logout failed: ${res.status}`);
+}
+
 export type Preferences = {
   calorie_goal: number;
   protein_goal_g: number;

@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { DaySummary, LoggedMeal, getLoggedMealsSummary, getLoggedMealsToday, rateMeal } from './api';
 import { colors, radius, space, type } from './theme';
 
-export default function DiaryScreen({ onGoToToday }: { onGoToToday: () => void }) {
+export default function DiaryScreen({ onGoToToday, onLogout }: { onGoToToday: () => void; onLogout: () => void }) {
   const [meals, setMeals] = useState<LoggedMeal[] | null>(null);
   const [summary, setSummary] = useState<DaySummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -50,9 +50,14 @@ export default function DiaryScreen({ onGoToToday }: { onGoToToday: () => void }
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.nav}>
         <Text style={styles.title}>Diary</Text>
-        <Pressable onPress={onGoToToday}>
-          <Text style={styles.navLink}>Today's Meals</Text>
-        </Pressable>
+        <View style={styles.navLinks}>
+          <Pressable onPress={onGoToToday}>
+            <Text style={styles.navLink}>Today's Meals</Text>
+          </Pressable>
+          <Pressable onPress={onLogout}>
+            <Text style={styles.navLink}>Log out</Text>
+          </Pressable>
+        </View>
       </View>
 
       <View style={styles.progressSection}>
@@ -136,6 +141,7 @@ const styles = StyleSheet.create({
   error: { ...type.body, color: colors.accent, textAlign: 'center' },
   nav: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: space.xl },
   title: { ...type.display, fontSize: 28 },
+  navLinks: { flexDirection: 'row', gap: space.lg },
   navLink: { ...type.kicker, color: colors.accent },
   progressSection: {
     marginBottom: space.xxl,
