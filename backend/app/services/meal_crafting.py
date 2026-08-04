@@ -19,14 +19,40 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.optimize import lsq_linear
 
-MIN_GRAMS = 20.0
-MAX_GRAMS = 400.0
 GRAMS_ROUNDING = 10.0
+
+# The item with the highest protein density in a candidate set is treated as
+# "the protein choice" (meat/fish/tofu/beans reliably out-protein sides like
+# rice or salad per 100g — see docs/adr/0003 addendum). It gets a dedicated,
+# realistic entree-sized portion computed directly from the protein target,
+# rather than being solved jointly with everything else — that joint solve
+# was squeezing dense protein items down toward the floor (e.g. 20g of beef)
+# whenever a little of them already covered the macro target on paper.
+ANCHOR_MIN_GRAMS = 100.0
+ANCHOR_MAX_GRAMS = 280.0
+
+# Remaining (non-anchor) items share a narrower range than before so no side
+# ends up looking like a garnish (too little) or a mountain (too much) next
+# to the anchor — keeps portions across one meal in a plausible range of
+# each other instead of swinging from 20g to 400g.
+SIDE_MIN_GRAMS = 40.0
+SIDE_MAX_GRAMS = 250.0
 
 MAX_CATEGORIES = 5
 # Categories that don't meaningfully contribute to "a meal" and would
 # otherwise dilute candidate generation (a coffee isn't a meal component).
 NON_MEAL_CATEGORIES = {"beverages", "coffee bar", "condiments"}
+
+# Stations that aren't "the protein" even when their nutrition numbers look
+# protein-dense on paper (a mismatched USDA entry can make a yogurt/fruit
+# item read as higher-protein than the actual entree). Anchor selection is
+# restricted to real protein/entree stations so it never picks, say, a chia
+# pudding over the beef dish next to it.
+ANCHOR_EXCLUDED_CATEGORIES = {
+    "bagel bar/cereal", "beverage", "beverage bar", "beverages",
+    "dessert", "desserts", "fruit & yogurt bar", "salad", "soup",
+    "chef's table - sides",
+}
 
 
 @dataclass
@@ -117,48 +143,102 @@ def generate_item_sets(groups: dict[str, list[ItemNutrition]], n_sets: int) -> l
     return sets
 
 
-def solve_portions(selected: list[ItemNutrition], target: Target) -> MealCandidate | None:
+def _pick_anchor(selected: list[ItemNutrition]) -> ItemNutrition | None:
+    """The item most representative of "the protein" in this set: highest
+    protein density, restricted to actual entree/protein stations."""
+    candidates = [
+        i for i in selected
+        if i.protein_g_per_100g > 0 and i.category.strip().lower() not in ANCHOR_EXCLUDED_CATEGORIES
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda i: i.protein_g_per_100g)
+
+
+def _append_item(
+    items: list[CraftedItem], totals: dict[str, float], item: ItemNutrition, grams: float
+) -> None:
+    calories = item.calories_per_100g * grams / 100
+    protein_g = item.protein_g_per_100g * grams / 100
+    carbs_g = item.carbs_g_per_100g * grams / 100
+    fat_g = item.fat_g_per_100g * grams / 100
+    items.append(
+        CraftedItem(
+            name=item.name, category=item.category, grams=grams,
+            calories=calories, protein_g=protein_g, carbs_g=carbs_g, fat_g=fat_g,
+        )
+    )
+    totals["calories"] += calories
+    totals["protein_g"] += protein_g
+    totals["carbs_g"] += carbs_g
+    totals["fat_g"] += fat_g
+
+
+def _normalized_row(values: list[float], target_value: float) -> list[float]:
+    # Guards against a macro the anchor already fully covered (remaining
+    # target 0) rather than requiring every macro to still be positive.
+    denom = target_value if target_value > 1e-6 else 1.0
+    return [v / denom for v in values]
+
+
+def _solve_bounded(
+    items: list[ItemNutrition], target: Target, min_grams: float, max_grams: float
+) -> list[tuple[ItemNutrition, float]]:
     """Bounded least squares: minimize relative deviation from target across
     all four macros simultaneously (normalizing by target so a calorie error
     and a gram-of-protein error are weighted comparably), one unknown (grams,
-    bounded to a realistic serving range) per selected item."""
+    bounded to a realistic serving range) per item."""
+    A = np.array(
+        [
+            _normalized_row([i.calories_per_100g for i in items], target.calories),
+            _normalized_row([i.protein_g_per_100g for i in items], target.protein_g),
+            _normalized_row([i.carbs_g_per_100g for i in items], target.carbs_g),
+            _normalized_row([i.fat_g_per_100g for i in items], target.fat_g),
+        ]
+    )
+    b = np.ones(4)
+    bounds = (min_grams / 100, max_grams / 100)
+    result = lsq_linear(A, b, bounds=bounds)
+    return [
+        (item, max(min_grams, round(x * 100 / GRAMS_ROUNDING) * GRAMS_ROUNDING))
+        for item, x in zip(items, result.x)
+    ]
+
+
+def solve_portions(selected: list[ItemNutrition], target: Target) -> MealCandidate | None:
+    """Anchors the meal on its protein item (a dedicated, realistic
+    entree-sized portion sized off the protein target directly), then solves
+    the remaining items against whatever's left of the target. If nothing in
+    the set has any protein, every item is solved jointly against the side
+    bounds instead — there's no anchor to speak of."""
     if not selected:
         return None
     if target.calories <= 0 or target.protein_g <= 0 or target.carbs_g <= 0 or target.fat_g <= 0:
         return None
 
-    A = np.array(
-        [
-            [i.calories_per_100g / target.calories for i in selected],
-            [i.protein_g_per_100g / target.protein_g for i in selected],
-            [i.carbs_g_per_100g / target.carbs_g for i in selected],
-            [i.fat_g_per_100g / target.fat_g for i in selected],
-        ]
-    )
-    b = np.ones(4)
-    bounds = (MIN_GRAMS / 100, MAX_GRAMS / 100)
-
-    result = lsq_linear(A, b, bounds=bounds)
+    anchor = _pick_anchor(selected)
+    others = [i for i in selected if i is not anchor]
 
     items: list[CraftedItem] = []
     totals = {"calories": 0.0, "protein_g": 0.0, "carbs_g": 0.0, "fat_g": 0.0}
-    for item, x in zip(selected, result.x):
-        grams = max(MIN_GRAMS, round(x * 100 / GRAMS_ROUNDING) * GRAMS_ROUNDING)
-        calories = item.calories_per_100g * grams / 100
-        protein_g = item.protein_g_per_100g * grams / 100
-        carbs_g = item.carbs_g_per_100g * grams / 100
-        fat_g = item.fat_g_per_100g * grams / 100
+    remaining_target = target
 
-        items.append(
-            CraftedItem(
-                name=item.name, category=item.category, grams=grams,
-                calories=calories, protein_g=protein_g, carbs_g=carbs_g, fat_g=fat_g,
-            )
+    if anchor is not None:
+        grams_for_target = target.protein_g / anchor.protein_g_per_100g * 100
+        anchor_grams = min(max(grams_for_target, ANCHOR_MIN_GRAMS), ANCHOR_MAX_GRAMS)
+        anchor_grams = round(anchor_grams / GRAMS_ROUNDING) * GRAMS_ROUNDING
+        _append_item(items, totals, anchor, anchor_grams)
+
+        remaining_target = Target(
+            calories=max(target.calories - totals["calories"], 0.0),
+            protein_g=max(target.protein_g - totals["protein_g"], 0.0),
+            carbs_g=max(target.carbs_g - totals["carbs_g"], 0.0),
+            fat_g=max(target.fat_g - totals["fat_g"], 0.0),
         )
-        totals["calories"] += calories
-        totals["protein_g"] += protein_g
-        totals["carbs_g"] += carbs_g
-        totals["fat_g"] += fat_g
+
+    if others:
+        for item, grams in _solve_bounded(others, remaining_target, SIDE_MIN_GRAMS, SIDE_MAX_GRAMS):
+            _append_item(items, totals, item, grams)
 
     return MealCandidate(items=items, totals=totals)
 
