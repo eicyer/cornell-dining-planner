@@ -26,6 +26,36 @@ class NutritionSource(str, enum.Enum):
     llm_estimate = "llm_estimate"
 
 
+class Sex(str, enum.Enum):
+    """Biological sex, used only as a coefficient in the Mifflin-St Jeor BMR
+    formula — see app.services.tdee."""
+
+    male = "male"
+    female = "female"
+
+
+class ActivityLevel(str, enum.Enum):
+    sedentary = "sedentary"
+    light = "light"
+    moderate = "moderate"
+    active = "active"
+    very_active = "very_active"
+
+
+class HealthGoal(str, enum.Enum):
+    lose_weight = "lose_weight"
+    maintain_weight = "maintain_weight"
+    gain_weight = "gain_weight"
+
+
+class TargetMode(str, enum.Enum):
+    """Whether the current calorie/macro goals came from the TDEE
+    recommender or were typed in directly — see app.services.tdee."""
+
+    recommended = "recommended"
+    manual = "manual"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -60,6 +90,19 @@ class UserPreference(Base):
 
     diet_restrictions: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
     allergens: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+
+    # Body/activity profile — inputs to the TDEE recommender (app.services.tdee),
+    # not used anywhere else. Nullable: a user who only ever enters targets
+    # manually never has to provide these.
+    age: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sex: Mapped[Sex | None] = mapped_column(Enum(Sex), nullable=True)
+    height_cm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    weight_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    activity_level: Mapped[ActivityLevel | None] = mapped_column(Enum(ActivityLevel), nullable=True)
+    health_goal: Mapped[HealthGoal | None] = mapped_column(Enum(HealthGoal), nullable=True)
+    # Recorded so re-opening the edit form can default back to whichever mode
+    # produced the saved targets, instead of always assuming manual entry.
+    target_mode: Mapped[TargetMode] = mapped_column(Enum(TargetMode), default=TargetMode.manual)
 
     liked_foods_text: Mapped[str | None] = mapped_column(String, nullable=True)
     disliked_foods_text: Mapped[str | None] = mapped_column(String, nullable=True)

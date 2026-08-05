@@ -1,6 +1,18 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { ALLERGENS, DIET_TAGS, Preferences, putPreferences } from './api';
+import {
+  ACTIVITY_LEVELS,
+  ActivityLevel,
+  ALLERGENS,
+  DIET_TAGS,
+  HEALTH_GOALS,
+  HealthGoal,
+  Preferences,
+  RecommendedTargets,
+  Sex,
+  putPreferences,
+  recommendTargets,
+} from './api';
 import { colors, radius, space, type } from './theme';
 
 const DEFAULTS: Preferences = {
@@ -11,10 +23,31 @@ const DEFAULTS: Preferences = {
   meals_per_day: 3,
   diet_restrictions: [],
   allergens: [],
+  age: null,
+  sex: null,
+  height_cm: null,
+  weight_kg: null,
+  activity_level: null,
+  health_goal: null,
+  target_mode: 'manual',
   liked_foods_text: '',
   disliked_foods_text: '',
   liked_tags: [],
   disliked_tags: [],
+};
+
+const ACTIVITY_LABELS: Record<ActivityLevel, string> = {
+  sedentary: 'Sedentary',
+  light: 'Light (1–3x/wk)',
+  moderate: 'Moderate (3–5x/wk)',
+  active: 'Active (6–7x/wk)',
+  very_active: 'Very active',
+};
+
+const HEALTH_GOAL_LABELS: Record<HealthGoal, string> = {
+  lose_weight: 'Lose weight',
+  maintain_weight: 'Maintain weight',
+  gain_weight: 'Gain weight',
 };
 
 function Chip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
@@ -25,16 +58,40 @@ function Chip({ label, selected, onPress }: { label: string; selected: boolean; 
   );
 }
 
-function NumberField({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+function Tab({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={[styles.tab, active && styles.tabActive]}>
+      <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function NumberField({
+  label,
+  value,
+  onChange,
+  decimal,
+  caption,
+}: {
+  label: string;
+  value: number | null;
+  onChange: (v: number) => void;
+  decimal?: boolean;
+  caption?: string;
+}) {
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
         style={styles.numberInput}
-        keyboardType="numeric"
-        value={String(value)}
-        onChangeText={(text) => onChange(Number(text.replace(/[^0-9]/g, '')) || 0)}
+        keyboardType={decimal ? 'decimal-pad' : 'numeric'}
+        value={value == null ? '' : String(value)}
+        onChangeText={(text) => {
+          const cleaned = decimal ? text.replace(/[^0-9.]/g, '') : text.replace(/[^0-9]/g, '');
+          onChange(Number(cleaned) || 0);
+        }}
       />
+      {caption && <Text style={styles.fieldCaption}>{caption}</Text>}
     </View>
   );
 }
@@ -48,11 +105,56 @@ export default function PreferencesForm({
 }) {
   const isUpdate = !!initial;
   const [prefs, setPrefs] = useState<Preferences>(initial ?? DEFAULTS);
+  const [targetTab, setTargetTab] = useState<'recommend' | 'manual'>(
+    (initial ?? DEFAULTS).target_mode === 'recommended' ? 'recommend' : 'manual'
+  );
+  const [calculating, setCalculating] = useState(false);
+  const [calcError, setCalcError] = useState<string | null>(null);
+  const [calcResult, setCalcResult] = useState<RecommendedTargets | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function toggle(list: string[], value: string): string[] {
     return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
+  }
+
+  function switchTab(tab: 'recommend' | 'manual') {
+    setTargetTab(tab);
+    if (tab === 'manual') {
+      setPrefs((p) => ({ ...p, target_mode: 'manual' }));
+    }
+  }
+
+  async function handleCalculate() {
+    setCalcError(null);
+    if (!prefs.age || !prefs.sex || !prefs.height_cm || !prefs.weight_kg || !prefs.activity_level || !prefs.health_goal) {
+      setCalcError('Fill in age, sex, height, weight, activity level, and goal first.');
+      return;
+    }
+    setCalculating(true);
+    try {
+      const result = await recommendTargets({
+        age: prefs.age,
+        sex: prefs.sex,
+        height_cm: prefs.height_cm,
+        weight_kg: prefs.weight_kg,
+        activity_level: prefs.activity_level,
+        health_goal: prefs.health_goal,
+      });
+      setCalcResult(result);
+      setPrefs((p) => ({
+        ...p,
+        calorie_goal: result.calorie_goal,
+        protein_goal_g: result.protein_goal_g,
+        carb_goal_g: result.carb_goal_g,
+        fat_goal_g: result.fat_goal_g,
+        target_mode: 'recommended',
+      }));
+    } catch (err: any) {
+      setCalcError(err.message);
+    } finally {
+      setCalculating(false);
+    }
   }
 
   async function handleSave() {
@@ -70,9 +172,91 @@ export default function PreferencesForm({
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>{isUpdate ? 'Update your goals' : 'Set your goals'}</Text>
-      <Text style={styles.subtitle}>Daily targets — we'll split them across your meals.</Text>
+      <Text style={styles.title}>{isUpdate ? 'Update your targets' : 'Set your targets'}</Text>
+      <Text style={styles.subtitle}>
+        Tell us your eating style and health goal, or enter exact numbers yourself — daily targets get split across
+        your meals.
+      </Text>
 
+      <Text style={styles.label}>How should we set your targets?</Text>
+      <View style={styles.tabRow}>
+        <Tab label="Recommend for me" active={targetTab === 'recommend'} onPress={() => switchTab('recommend')} />
+        <Tab label="Enter my own numbers" active={targetTab === 'manual'} onPress={() => switchTab('manual')} />
+      </View>
+
+      {targetTab === 'recommend' ? (
+        <View style={styles.recommendPanel}>
+          <Text style={styles.helperText}>
+            We estimate your calories and macros from your stats (Mifflin-St Jeor BMR × activity level), adjusted
+            for your goal. We never recommend below 1200–1500 cal or above 4500 cal.
+          </Text>
+
+          <NumberField label="Age" value={prefs.age} caption="13–100" onChange={(v) => setPrefs({ ...prefs, age: v })} />
+          <NumberField
+            label="Height (cm)"
+            decimal
+            value={prefs.height_cm}
+            caption="120–230 cm"
+            onChange={(v) => setPrefs({ ...prefs, height_cm: v })}
+          />
+          <NumberField
+            label="Weight (kg)"
+            decimal
+            value={prefs.weight_kg}
+            caption="30–300 kg"
+            onChange={(v) => setPrefs({ ...prefs, weight_kg: v })}
+          />
+
+          <Text style={styles.label}>Sex</Text>
+          <Text style={styles.fieldCaption}>Used only for the calorie formula above.</Text>
+          <View style={styles.chipRow}>
+            {(['male', 'female'] as Sex[]).map((s) => (
+              <Chip key={s} label={s} selected={prefs.sex === s} onPress={() => setPrefs({ ...prefs, sex: s })} />
+            ))}
+          </View>
+
+          <Text style={styles.label}>Activity level</Text>
+          <View style={styles.chipRow}>
+            {ACTIVITY_LEVELS.map((level) => (
+              <Chip
+                key={level}
+                label={ACTIVITY_LABELS[level]}
+                selected={prefs.activity_level === level}
+                onPress={() => setPrefs({ ...prefs, activity_level: level })}
+              />
+            ))}
+          </View>
+
+          <Text style={styles.label}>Health goal</Text>
+          <View style={styles.chipRow}>
+            {HEALTH_GOALS.map((goal) => (
+              <Chip
+                key={goal}
+                label={HEALTH_GOAL_LABELS[goal]}
+                selected={prefs.health_goal === goal}
+                onPress={() => setPrefs({ ...prefs, health_goal: goal })}
+              />
+            ))}
+          </View>
+
+          {calcError && <Text style={styles.error}>{calcError}</Text>}
+
+          <Pressable style={styles.calcButton} onPress={handleCalculate} disabled={calculating}>
+            <Text style={styles.calcButtonText}>{calculating ? 'Calculating…' : 'Calculate my targets →'}</Text>
+          </Pressable>
+
+          {calcResult && (
+            <Text style={styles.calcResult}>
+              BMR {calcResult.bmr} cal · TDEE {calcResult.tdee} cal/day — targets below are filled in, edit them
+              freely.
+            </Text>
+          )}
+        </View>
+      ) : (
+        <Text style={styles.helperText}>Enter your own daily calorie and macro targets below.</Text>
+      )}
+
+      <Text style={[styles.label, styles.dailyTargetsLabel]}>Daily targets</Text>
       <NumberField label="Calories" value={prefs.calorie_goal} onChange={(v) => setPrefs({ ...prefs, calorie_goal: v })} />
       <NumberField label="Protein (g)" value={prefs.protein_goal_g} onChange={(v) => setPrefs({ ...prefs, protein_goal_g: v })} />
       <NumberField label="Carbs (g)" value={prefs.carb_goal_g} onChange={(v) => setPrefs({ ...prefs, carb_goal_g: v })} />
@@ -140,6 +324,9 @@ const styles = StyleSheet.create({
   subtitle: { ...type.body, color: colors.inkSecondary, marginBottom: space.xl },
   field: { marginBottom: space.md },
   label: { ...type.kicker, marginTop: space.sm, marginBottom: space.sm },
+  dailyTargetsLabel: { marginTop: space.xl },
+  fieldCaption: { ...type.caption, marginTop: space.xs },
+  helperText: { ...type.body, color: colors.inkSecondary, marginBottom: space.md },
   numberInput: {
     borderBottomWidth: 1,
     borderBottomColor: colors.ink,
@@ -161,7 +348,22 @@ const styles = StyleSheet.create({
     minHeight: 52,
     textAlignVertical: 'top',
   },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.md },
+  tabRow: { flexDirection: 'row', gap: space.lg, marginBottom: space.lg },
+  tab: { borderBottomWidth: 2, borderBottomColor: 'transparent', paddingBottom: space.xs },
+  tabActive: { borderBottomColor: colors.accent },
+  tabText: { ...type.kicker, color: colors.inkTertiary },
+  tabTextActive: { color: colors.ink },
+  recommendPanel: { marginBottom: space.sm },
+  calcButton: {
+    backgroundColor: colors.accent,
+    borderRadius: radius.none,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: space.md,
+  },
+  calcButtonText: { ...type.button },
+  calcResult: { ...type.mono, marginTop: space.md },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.md, marginBottom: space.md },
   chip: {
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',

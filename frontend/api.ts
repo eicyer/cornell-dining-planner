@@ -14,6 +14,15 @@ function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
   return fetch(`${API_BASE}${path}`, { ...options, credentials: 'include' });
 }
 
+// FastAPI validation errors (422) return `detail` as a list of {msg, ...},
+// not a string — this reads either shape into one message for display.
+async function errorMessage(res: Response, fallback: string): Promise<string> {
+  const body = await res.json().catch(() => null);
+  if (typeof body?.detail === 'string') return body.detail;
+  if (Array.isArray(body?.detail)) return body.detail.map((d: any) => d.msg).filter(Boolean).join('; ') || fallback;
+  return fallback;
+}
+
 export type Me = { id: number; email: string };
 
 export async function getMe(): Promise<Me | null> {
@@ -28,6 +37,15 @@ export async function logout(): Promise<void> {
   if (!res.ok) throw new Error(`POST /auth/logout failed: ${res.status}`);
 }
 
+export const ACTIVITY_LEVELS = ['sedentary', 'light', 'moderate', 'active', 'very_active'] as const;
+export type ActivityLevel = (typeof ACTIVITY_LEVELS)[number];
+
+export const HEALTH_GOALS = ['lose_weight', 'maintain_weight', 'gain_weight'] as const;
+export type HealthGoal = (typeof HEALTH_GOALS)[number];
+
+export type Sex = 'male' | 'female';
+export type TargetMode = 'recommended' | 'manual';
+
 export type Preferences = {
   calorie_goal: number;
   protein_goal_g: number;
@@ -36,6 +54,13 @@ export type Preferences = {
   meals_per_day: number;
   diet_restrictions: string[];
   allergens: string[];
+  age: number | null;
+  sex: Sex | null;
+  height_cm: number | null;
+  weight_kg: number | null;
+  activity_level: ActivityLevel | null;
+  health_goal: HealthGoal | null;
+  target_mode: TargetMode;
   liked_foods_text: string | null;
   disliked_foods_text: string | null;
   liked_tags: string[];
@@ -55,7 +80,35 @@ export async function putPreferences(prefs: Preferences): Promise<Preferences> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(prefs),
   });
-  if (!res.ok) throw new Error(`PUT /preferences failed: ${res.status}`);
+  if (!res.ok) throw new Error(await errorMessage(res, `PUT /preferences failed: ${res.status}`));
+  return res.json();
+}
+
+export type RecommendTargetsInput = {
+  age: number;
+  sex: Sex;
+  height_cm: number;
+  weight_kg: number;
+  activity_level: ActivityLevel;
+  health_goal: HealthGoal;
+};
+
+export type RecommendedTargets = {
+  bmr: number;
+  tdee: number;
+  calorie_goal: number;
+  protein_goal_g: number;
+  carb_goal_g: number;
+  fat_goal_g: number;
+};
+
+export async function recommendTargets(input: RecommendTargetsInput): Promise<RecommendedTargets> {
+  const res = await apiFetch('/preferences/recommend-targets', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `POST /preferences/recommend-targets failed: ${res.status}`));
   return res.json();
 }
 
