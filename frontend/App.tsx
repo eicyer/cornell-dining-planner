@@ -15,7 +15,7 @@ import PreferencesForm from './PreferencesForm';
 import CraftedMealsList from './CraftedMealsList';
 import DiaryScreen from './DiaryScreen';
 import EateryDetailScreen from './EateryDetailScreen';
-import { colors, fonts, radius, type } from './theme';
+import { colors, radius, type } from './theme';
 
 type Screen =
   | { kind: 'loading' }

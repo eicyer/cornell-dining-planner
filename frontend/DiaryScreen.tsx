@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { DaySummary, LoggedMeal, getLoggedMealsSummary, getLoggedMealsToday, rateMeal } from './api';
+import { describePortion } from './foodDensity';
 import { colors, radius, space, type } from './theme';
 
 export default function DiaryScreen({
@@ -98,14 +99,17 @@ export default function DiaryScreen({
                 </Pressable>
               </View>
             </View>
-            {meal.items.map((item) => (
-              <Text key={item.name} style={styles.itemText}>
-                {item.name}{' '}
-                <Text style={styles.itemFigures}>
-                  ({Math.round(item.grams)}g) — {Math.round(item.calories)} cal
+            {meal.items.map((item) => {
+              const portion = describePortion(item);
+              return (
+                <Text key={item.name} style={styles.itemText}>
+                  {item.name}{' '}
+                  <Text style={styles.itemFigures}>
+                    ({Math.round(item.grams)}g{portion ? ` · ${portion}` : ''}) — {Math.round(item.calories)} cal
+                  </Text>
                 </Text>
-              </Text>
-            ))}
+              );
+            })}
             <Text style={styles.mealTotals}>
               {Math.round(meal.totals.calories)} cal · {Math.round(meal.totals.protein_g)}g protein
             </Text>

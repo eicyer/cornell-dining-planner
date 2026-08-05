@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { EateryMenu, LoggedMeal, logMeal } from './api';
+import { describePortion } from './foodDensity';
 import { colors, radius, space, type } from './theme';
 
 export default function EateryDetailScreen({
@@ -87,27 +88,32 @@ export default function EateryDetailScreen({
         {event.categories.map((category) => (
           <View key={category.category} style={styles.category}>
             <Text style={styles.categoryTitle}>{category.category}</Text>
-            {category.items.map((item) => (
-              <View key={item.name} style={styles.itemRow}>
-                <View style={styles.itemInfo}>
-                  <Text style={styles.itemName}>{item.name}</Text>
-                  <Text style={styles.itemCalories}>
-                    {item.nutrition ? `${Math.round(item.nutrition.calories_per_100g)} cal/100g` : 'no nutrition data'}
-                  </Text>
+            {category.items.map((item) => {
+              const enteredGrams = grams[item.name] ?? 0;
+              const portion = enteredGrams > 0 ? describePortion({ name: item.name, grams: enteredGrams }) : '';
+              return (
+                <View key={item.name} style={styles.itemRow}>
+                  <View style={styles.itemInfo}>
+                    <Text style={styles.itemName}>{item.name}</Text>
+                    <Text style={styles.itemCalories}>
+                      {item.nutrition ? `${Math.round(item.nutrition.calories_per_100g)} cal/100g` : 'no nutrition data'}
+                      {portion ? ` · ${portion}` : ''}
+                    </Text>
+                  </View>
+                  <TextInput
+                    style={styles.gramsInput}
+                    keyboardType="numeric"
+                    placeholder="0g"
+                    placeholderTextColor={colors.inkTertiary}
+                    value={grams[item.name] ? String(grams[item.name]) : ''}
+                    editable={!!item.nutrition}
+                    onChangeText={(text) =>
+                      setGrams({ ...grams, [item.name]: Number(text.replace(/[^0-9]/g, '')) || 0 })
+                    }
+                  />
                 </View>
-                <TextInput
-                  style={styles.gramsInput}
-                  keyboardType="numeric"
-                  placeholder="0g"
-                  placeholderTextColor={colors.inkTertiary}
-                  value={grams[item.name] ? String(grams[item.name]) : ''}
-                  editable={!!item.nutrition}
-                  onChangeText={(text) =>
-                    setGrams({ ...grams, [item.name]: Number(text.replace(/[^0-9]/g, '')) || 0 })
-                  }
-                />
-              </View>
-            ))}
+              );
+            })}
           </View>
         ))}
       </ScrollView>

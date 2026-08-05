@@ -59,7 +59,7 @@ This is genuinely how the app should read: `CraftedMealsList.tsx` renders the ki
 | `body` | Archivo 400 | 15/22 | Body copy, item names, instructional text |
 | `kicker` | Archivo 600, uppercase, +0.8 tracking | 12/16 | Nav links, section labels, category headers, form field labels |
 | `button` | Archivo 600 | 15/20 | All button labels |
-| `caption` | Archivo 400 | 12/16 | Least-emphasis captions (plate labels) |
+| `caption` | Archivo 400 | 12/16 | Least-emphasis captions |
 | `mono` / `monoEmphasis` | IBM Plex Mono 400/500 | 13/18, 15/20 | **Numeric data only** — calories, grams, macro totals, progress figures, numeric form inputs |
 
 Rule: Fraunces is for editorial content (names, rationale, headlines). Archivo is for UI chrome and prose (labels, buttons, instructional copy, free-text areas — e.g. `PreferencesForm`'s "Foods you like" textarea stays Archivo because it's prose, not data). IBM Plex Mono is reserved strictly for numbers, giving nutrition data a spec-sheet feel without turning the whole app technical.
@@ -70,9 +70,8 @@ Rule: Fraunces is for editorial content (names, rationale, headlines). Archivo i
 
 ## Radius
 
-`theme.ts` → `radius.none = 0`. Applied everywhere: buttons, inputs, progress bars. Two explicit exceptions, both functional data-viz rather than UI chrome:
+`theme.ts` → `radius.none = 0`. Applied everywhere: buttons, inputs, progress bars. One explicit exception, functional data-viz rather than UI chrome:
 1. `colorDot` legend swatches in `CraftedMealsList.tsx` (`borderRadius: 5`, circular by necessity).
-2. The `PlateVisual.tsx` SVG donut chart (`Circle`/`Path` — inherently circular).
 
 ## Boxes → whitespace + rule
 
@@ -88,9 +87,13 @@ Rule: Fraunces is for editorial content (names, rationale, headlines). Archivo i
 
 Rows that were already hairline-only (`weekRow`, `itemRow` in `EateryDetailScreen`, the `eatery` block in `CraftedMealsList`) keep that pattern, just recolored to `colors.hairline`.
 
-## Exception: `foodColors.ts` / `PlateVisual.tsx`
+## Exception: `foodColors.ts`
 
-`foodColors.ts` is functional data-visualization, not brand chrome: it assigns a wide, distinct hue per food item (with semantic keyword rules and per-call collision avoidance in `assignPlateColors`) so a plate's food composition is visually scannable. It is explicitly exempt from the core palette above and was left untouched. Only the three neutral literals in `PlateVisual.tsx` (plate ring stroke/fill, empty-state fill, and the unmatched-item fallback color) were warmed to match the new paper/ink system.
+`foodColors.ts` is functional data-visualization, not brand chrome: it assigns a wide, distinct hue per food item (with semantic keyword rules and per-call collision avoidance in `assignPlateColors`) so the `colorDot` legend swatch next to each item name is visually scannable. It is explicitly exempt from the core palette above and left untouched.
+
+## Portion legibility: `foodDensity.ts`
+
+We tried a plate-shaped chart (pie/donut, then a density-corrected version, then a horizontal-bar and a food-role-grouped variant) and dropped the idea — charts make you compare angles/areas, which people are bad at, and no amount of correction fixed that. Instead, `foodDensity.ts` exports `describePortion()`, which turns a gram count into a plain-language volume estimate using the same coarse density heuristic (`relativeVolume()`) that would have driven the chart: `Grilled Salmon (170g · ≈ ¾ cup)`. This is the app's actual answer to "grams don't map to volume" — say it in words next to the number, don't try to draw it. Used in `CraftedMealsList.tsx`, `DiaryScreen.tsx`, and live (as you type a gram value) in `EateryDetailScreen.tsx`.
 
 ## Font loading
 
@@ -99,8 +102,8 @@ Rows that were already hairline-only (`weekRow`, `itemRow` in `EateryDetailScree
 ## Verification checklist
 
 - [ ] No `Inter`/`Roboto`/system-font family ever resolves in `getComputedStyle(...).fontFamily` on any title, body, or numeric element.
-- [ ] No purple/indigo/gradient anywhere; the only saturated color is Cornell Red (plus the exempted food-plate palette).
-- [ ] No `borderRadius` above ~2px anywhere except `colorDot` and the SVG plate.
+- [ ] No purple/indigo/gradient anywhere; the only saturated color is Cornell Red (plus the exempted `foodColors.ts` palette on `colorDot` swatches).
+- [ ] No `borderRadius` above ~2px anywhere except `colorDot`.
 - [ ] No bordered/background "card" boxes remain around meal rows, the progress section, or chip/tab groups — hairline rules only.
 - [ ] All 5 screens (logged out, survey, crafted meals, eatery detail, diary) render real Cornell dining content, never placeholder copy.
 - [ ] Gram inputs, preference toggles, and "Log meal" flows still function end-to-end.

@@ -1,17 +1,11 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { CraftedItem, EateryCrafted, logMeal } from './api';
-import PlateVisual from './PlateVisual';
 import { assignPlateColors } from './foodColors';
+import { describePortion } from './foodDensity';
 import { colors, radius, space, type } from './theme';
 
 type LogStatus = 'idle' | 'saving' | 'done' | 'error';
-
-const SALAD_SOUP_CATEGORIES = new Set(['salad', 'soup']);
-
-function isSaladOrSoup(item: CraftedItem): boolean {
-  return SALAD_SOUP_CATEGORIES.has(item.category.toLowerCase());
-}
 
 function todayKicker(): string {
   const weekday = new Date().toLocaleDateString('en-US', { weekday: 'long' });
@@ -80,49 +74,32 @@ export default function CraftedMealsList({
               <Text style={styles.unavailable}>{eatery.reason_unavailable ?? 'Not available today'}</Text>
             ) : (() => {
               const mealItems = eatery.crafted_meal.items;
-              const mainItems = mealItems.filter((i) => !isSaladOrSoup(i));
-              const sideItems = mealItems.filter(isSaladOrSoup);
-              const mainColors = assignPlateColors(mainItems);
-              const sideColors = assignPlateColors(sideItems);
-              const colorFor = (item: CraftedItem) =>
-                (isSaladOrSoup(item) ? sideColors : mainColors)[item.name] ?? colors.neutralFallback;
+              const itemColors = assignPlateColors(mealItems);
+              const colorFor = (item: CraftedItem) => itemColors[item.name] ?? colors.neutralFallback;
 
               return (
                 <View style={styles.meal}>
                   <Text style={styles.mealPeriod}>{eatery.meal_period}</Text>
+                  <Text style={styles.mealName}>{eatery.crafted_meal.name}</Text>
+                  <Text style={styles.rationale}>{eatery.crafted_meal.rationale}</Text>
 
-                  <View style={styles.mealHeader}>
-                    <View style={styles.platesRow}>
-                      {mainItems.length > 0 && (
-                        <View style={styles.plateBlock}>
-                          <PlateVisual items={mainItems} colors={mainColors} />
-                          <Text style={styles.plateLabel}>Meal</Text>
+                  {mealItems.map((item) => {
+                    const portion = describePortion(item);
+                    return (
+                      <View key={item.name} style={styles.item}>
+                        <View style={styles.itemNameRow}>
+                          <View style={[styles.colorDot, { backgroundColor: colorFor(item) }]} />
+                          <Text style={styles.itemName}>
+                            {item.name}{' '}
+                            <Text style={styles.itemGrams}>
+                              ({Math.round(item.grams)}g{portion ? ` · ${portion}` : ''})
+                            </Text>
+                          </Text>
                         </View>
-                      )}
-                      {sideItems.length > 0 && (
-                        <View style={styles.plateBlock}>
-                          <PlateVisual items={sideItems} colors={sideColors} size={64} />
-                          <Text style={styles.plateLabel}>Salad/Soup</Text>
-                        </View>
-                      )}
-                    </View>
-                    <View style={styles.mealHeaderText}>
-                      <Text style={styles.mealName}>{eatery.crafted_meal.name}</Text>
-                      <Text style={styles.rationale}>{eatery.crafted_meal.rationale}</Text>
-                    </View>
-                  </View>
-
-                  {mealItems.map((item) => (
-                    <View key={item.name} style={styles.item}>
-                      <View style={styles.itemNameRow}>
-                        <View style={[styles.colorDot, { backgroundColor: colorFor(item) }]} />
-                        <Text style={styles.itemName}>
-                          {item.name} <Text style={styles.itemGrams}>({Math.round(item.grams)}g)</Text>
-                        </Text>
+                        <Text style={styles.itemCalories}>{Math.round(item.calories)} cal</Text>
                       </View>
-                      <Text style={styles.itemCalories}>{Math.round(item.calories)} cal</Text>
-                    </View>
-                  ))}
+                    );
+                  })}
 
                   <View style={styles.totals}>
                     <Text style={styles.totalsText}>
@@ -175,13 +152,8 @@ const styles = StyleSheet.create({
   unavailable: { fontFamily: 'Fraunces_500Medium_Italic', fontSize: 15, color: colors.inkSecondary },
   meal: { marginTop: space.xs },
   mealPeriod: { ...type.kicker },
-  mealHeader: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginTop: space.xs, marginBottom: space.md },
-  platesRow: { flexDirection: 'row', gap: space.sm },
-  plateBlock: { alignItems: 'center' },
-  plateLabel: { ...type.caption, marginTop: space.xs },
-  mealHeaderText: { flex: 1 },
-  mealName: { fontFamily: 'Fraunces_600SemiBold', fontSize: 19, color: colors.ink, marginBottom: space.xs },
-  rationale: { fontFamily: 'Fraunces_500Medium_Italic', fontSize: 14, color: colors.inkSecondary },
+  mealName: { fontFamily: 'Fraunces_600SemiBold', fontSize: 19, color: colors.ink, marginTop: space.xs, marginBottom: space.xs },
+  rationale: { fontFamily: 'Fraunces_500Medium_Italic', fontSize: 14, color: colors.inkSecondary, marginBottom: space.md },
   item: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 3 },
   itemNameRow: { flexDirection: 'row', alignItems: 'center', flexShrink: 1, paddingRight: space.sm },
   colorDot: { width: 9, height: 9, borderRadius: 5, marginRight: space.sm, flexShrink: 0 },

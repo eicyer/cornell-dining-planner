@@ -49,6 +49,6 @@ export const type = {
 
 export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32, xxxl: 48 };
 
-// Deliberately the only radius token in the system — see Design.md for the two
-// named exceptions (colorDot legend swatches, the PlateVisual donut chart).
+// Deliberately the only radius token in the system — see Design.md for the
+// named exception (colorDot legend swatches).
 export const radius = { none: 0 };
