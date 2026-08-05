@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user
-from app.db.models import ActivityLevel, HealthGoal, Sex, TargetMode, User, UserPreference
+from app.db.models import ActivityLevel, HealthGoal, MacroStyle, Sex, TargetMode, User, UserPreference
 from app.db.session import get_db
 from app.services.llm_enrichment import ALLERGENS, DIET_TAGS
 from app.services.preference_parsing import parse_preferences
@@ -40,10 +40,14 @@ class PreferencesIn(BaseModel):
     weight_kg: float | None = Field(default=None, ge=30, le=300)
     activity_level: ActivityLevel | None = None
     health_goal: HealthGoal | None = None
+    macro_style: MacroStyle | None = None
     target_mode: TargetMode = TargetMode.manual
 
     liked_foods_text: str | None = None
     disliked_foods_text: str | None = None
+    # Soft Preference, scored deterministically before the LLM polish step —
+    # see docs/adr/0009-deterministic-preference-preranking.
+    prefer_whole_foods: bool = False
 
     @field_validator("diet_restrictions")
     @classmethod
@@ -76,11 +80,13 @@ class PreferencesOut(BaseModel):
     weight_kg: float | None
     activity_level: ActivityLevel | None
     health_goal: HealthGoal | None
+    macro_style: MacroStyle | None
     target_mode: TargetMode
     liked_foods_text: str | None
     disliked_foods_text: str | None
     liked_tags: list[str]
     disliked_tags: list[str]
+    prefer_whole_foods: bool
 
 
 class RecommendTargetsIn(BaseModel):
@@ -90,6 +96,7 @@ class RecommendTargetsIn(BaseModel):
     weight_kg: float = Field(ge=30, le=300)
     activity_level: ActivityLevel
     health_goal: HealthGoal
+    macro_style: MacroStyle = MacroStyle.balanced
 
 
 class RecommendTargetsOut(BaseModel):
@@ -112,6 +119,7 @@ def recommend_targets_endpoint(
         age=body.age,
         activity_level=body.activity_level,
         health_goal=body.health_goal,
+        macro_style=body.macro_style,
     )
     return RecommendTargetsOut(**vars(result))
 
@@ -146,9 +154,11 @@ async def put_preferences(
     prefs.weight_kg = body.weight_kg
     prefs.activity_level = body.activity_level
     prefs.health_goal = body.health_goal
+    prefs.macro_style = body.macro_style
     prefs.target_mode = body.target_mode
     prefs.liked_foods_text = body.liked_foods_text
     prefs.disliked_foods_text = body.disliked_foods_text
+    prefs.prefer_whole_foods = body.prefer_whole_foods
 
     liked_tags, disliked_tags = await parse_preferences(
         make_llm_client(), body.liked_foods_text, body.disliked_foods_text

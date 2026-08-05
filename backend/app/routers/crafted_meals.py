@@ -10,6 +10,7 @@ from app.db.session import get_db
 from app.services.llm_enrichment import make_client as make_llm_client
 from app.services.meal_crafting import HardConstraints, ItemNutrition, generate_candidates, per_meal_target
 from app.services.meal_polish import polish_meal
+from app.services.preference_scoring import rank_candidates
 
 router = APIRouter()
 
@@ -128,8 +129,9 @@ async def crafted_meals_today(
             )
             continue
 
-        polished = await polish_meal(llm_client, candidates, target, prefs.liked_tags, prefs.disliked_tags)
-        chosen = candidates[polished.candidate_index]
+        ranked = rank_candidates(candidates, prefs.liked_tags, prefs.disliked_tags, prefs.prefer_whole_foods)
+        polished = await polish_meal(llm_client, ranked, target, prefs.liked_tags, prefs.disliked_tags)
+        chosen = ranked[polished.candidate_index]
 
         out.append(
             EateryCraftedOut(

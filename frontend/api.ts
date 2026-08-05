@@ -43,6 +43,9 @@ export type ActivityLevel = (typeof ACTIVITY_LEVELS)[number];
 export const HEALTH_GOALS = ['lose_weight', 'maintain_weight', 'gain_weight'] as const;
 export type HealthGoal = (typeof HEALTH_GOALS)[number];
 
+export const MACRO_STYLES = ['balanced', 'lower_carb'] as const;
+export type MacroStyle = (typeof MACRO_STYLES)[number];
+
 export type Sex = 'male' | 'female';
 export type TargetMode = 'recommended' | 'manual';
 
@@ -60,11 +63,13 @@ export type Preferences = {
   weight_kg: number | null;
   activity_level: ActivityLevel | null;
   health_goal: HealthGoal | null;
+  macro_style: MacroStyle | null;
   target_mode: TargetMode;
   liked_foods_text: string | null;
   disliked_foods_text: string | null;
   liked_tags: string[];
   disliked_tags: string[];
+  prefer_whole_foods: boolean;
 };
 
 export async function getPreferences(): Promise<Preferences | null> {
@@ -91,6 +96,7 @@ export type RecommendTargetsInput = {
   weight_kg: number;
   activity_level: ActivityLevel;
   health_goal: HealthGoal;
+  macro_style: MacroStyle;
 };
 
 export type RecommendedTargets = {

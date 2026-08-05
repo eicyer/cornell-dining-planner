@@ -48,6 +48,14 @@ class HealthGoal(str, enum.Enum):
     gain_weight = "gain_weight"
 
 
+class MacroStyle(str, enum.Enum):
+    """How calories are split across protein/carb/fat in Recommended Targets
+    — see app.services.tdee. Never filters foods; that's diet_restrictions."""
+
+    balanced = "balanced"
+    lower_carb = "lower_carb"
+
+
 class TargetMode(str, enum.Enum):
     """Whether the current calorie/macro goals came from the TDEE
     recommender or were typed in directly — see app.services.tdee."""
@@ -100,6 +108,7 @@ class UserPreference(Base):
     weight_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
     activity_level: Mapped[ActivityLevel | None] = mapped_column(Enum(ActivityLevel), nullable=True)
     health_goal: Mapped[HealthGoal | None] = mapped_column(Enum(HealthGoal), nullable=True)
+    macro_style: Mapped[MacroStyle | None] = mapped_column(Enum(MacroStyle), nullable=True)
     # Recorded so re-opening the edit form can default back to whichever mode
     # produced the saved targets, instead of always assuming manual entry.
     target_mode: Mapped[TargetMode] = mapped_column(Enum(TargetMode), default=TargetMode.manual)
@@ -108,6 +117,9 @@ class UserPreference(Base):
     disliked_foods_text: Mapped[str | None] = mapped_column(String, nullable=True)
     liked_tags: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
     disliked_tags: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+    # Soft Preference, scored deterministically in app.services.preference_scoring
+    # — see docs/adr/0009-deterministic-preference-preranking.
+    prefer_whole_foods: Mapped[bool] = mapped_column(Boolean, default=False)
 
     user: Mapped["User"] = relationship(back_populates="preferences")
 

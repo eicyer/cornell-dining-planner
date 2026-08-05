@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.db.models import ActivityLevel, HealthGoal, Sex
+from app.db.models import ActivityLevel, HealthGoal, MacroStyle, Sex
 
 ACTIVITY_MULTIPLIERS: dict[ActivityLevel, float] = {
     ActivityLevel.sedentary: 1.2,
@@ -46,7 +46,15 @@ PROTEIN_G_PER_KG: dict[HealthGoal, float] = {
     HealthGoal.maintain_weight: 1.6,
     HealthGoal.gain_weight: 1.8,
 }
-FAT_FRACTION_OF_CALORIES = 0.28
+
+# Macro Style only shifts the fat/carb split — protein stays goal-driven
+# either way. "Lower carb" is a moderate tier (fat ~45% of calories, carbs
+# fill what's left), not a keto-level extreme (<10% carbs) — consistent
+# with the "no extremes" rule this module already enforces on calories.
+FAT_FRACTION_BY_MACRO_STYLE: dict[MacroStyle, float] = {
+    MacroStyle.balanced: 0.28,
+    MacroStyle.lower_carb: 0.45,
+}
 
 
 @dataclass
@@ -72,6 +80,7 @@ def recommend_targets(
     age: int,
     activity_level: ActivityLevel,
     health_goal: HealthGoal,
+    macro_style: MacroStyle = MacroStyle.balanced,
 ) -> RecommendedTargets:
     bmr = mifflin_st_jeor_bmr(sex, weight_kg, height_cm, age)
     tdee = bmr * ACTIVITY_MULTIPLIERS[activity_level]
@@ -81,7 +90,7 @@ def recommend_targets(
 
     protein_g = weight_kg * PROTEIN_G_PER_KG[health_goal]
     protein_kcal = protein_g * 4
-    fat_kcal = calories * FAT_FRACTION_OF_CALORIES
+    fat_kcal = calories * FAT_FRACTION_BY_MACRO_STYLE[macro_style]
 
     # Guard against protein+fat eating the whole calorie budget at once (a
     # heavy person on a low-calorie goal) — scale both down proportionally

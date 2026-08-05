@@ -7,6 +7,8 @@ import {
   DIET_TAGS,
   HEALTH_GOALS,
   HealthGoal,
+  MACRO_STYLES,
+  MacroStyle,
   Preferences,
   RecommendedTargets,
   Sex,
@@ -29,11 +31,13 @@ const DEFAULTS: Preferences = {
   weight_kg: null,
   activity_level: null,
   health_goal: null,
+  macro_style: null,
   target_mode: 'manual',
   liked_foods_text: '',
   disliked_foods_text: '',
   liked_tags: [],
   disliked_tags: [],
+  prefer_whole_foods: false,
 };
 
 const ACTIVITY_LABELS: Record<ActivityLevel, string> = {
@@ -48,6 +52,11 @@ const HEALTH_GOAL_LABELS: Record<HealthGoal, string> = {
   lose_weight: 'Lose weight',
   maintain_weight: 'Maintain weight',
   gain_weight: 'Gain weight',
+};
+
+const MACRO_STYLE_LABELS: Record<MacroStyle, string> = {
+  balanced: 'Balanced',
+  lower_carb: 'Lower carb',
 };
 
 function Chip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
@@ -140,6 +149,7 @@ export default function PreferencesForm({
         weight_kg: prefs.weight_kg,
         activity_level: prefs.activity_level,
         health_goal: prefs.health_goal,
+        macro_style: prefs.macro_style ?? 'balanced',
       });
       setCalcResult(result);
       setPrefs((p) => ({
@@ -239,6 +249,19 @@ export default function PreferencesForm({
             ))}
           </View>
 
+          <Text style={styles.label}>Macro style</Text>
+          <Text style={styles.fieldCaption}>How calories split across protein/carbs/fat. Protein stays the same either way.</Text>
+          <View style={styles.chipRow}>
+            {MACRO_STYLES.map((style) => (
+              <Chip
+                key={style}
+                label={MACRO_STYLE_LABELS[style]}
+                selected={(prefs.macro_style ?? 'balanced') === style}
+                onPress={() => setPrefs({ ...prefs, macro_style: style })}
+              />
+            ))}
+          </View>
+
           {calcError && <Text style={styles.error}>{calcError}</Text>}
 
           <Pressable style={styles.calcButton} onPress={handleCalculate} disabled={calculating}>
@@ -285,6 +308,15 @@ export default function PreferencesForm({
             onPress={() => setPrefs({ ...prefs, allergens: toggle(prefs.allergens, a) })}
           />
         ))}
+      </View>
+
+      <Text style={styles.label}>Food quality</Text>
+      <View style={styles.chipRow}>
+        <Chip
+          label="Prefer whole & minimally processed foods"
+          selected={prefs.prefer_whole_foods}
+          onPress={() => setPrefs({ ...prefs, prefer_whole_foods: !prefs.prefer_whole_foods })}
+        />
       </View>
 
       <Text style={styles.label}>Foods you like</Text>
