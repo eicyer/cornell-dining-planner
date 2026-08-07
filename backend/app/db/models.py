@@ -121,6 +121,11 @@ class UserPreference(Base):
     # — see docs/adr/0009-deterministic-preference-preranking.
     prefer_whole_foods: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Whether the pairwise food survey (app.services.food_survey) has been
+    # completed — see docs/adr/0011-food-preference-survey. Its results merge
+    # into liked_tags/disliked_tags above, not a separate field.
+    food_survey_completed: Mapped[bool] = mapped_column(Boolean, default=False)
+
     user: Mapped["User"] = relationship(back_populates="preferences")
 
 

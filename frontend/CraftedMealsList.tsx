@@ -18,12 +18,14 @@ export default function CraftedMealsList({
   onSelectEatery,
   onLogout,
   onUpdatePreferences,
+  onRetakeFoodSurvey,
 }: {
   eateries: EateryCrafted[];
   onGoToDiary: () => void;
   onSelectEatery: (eateryId: number) => void;
   onLogout: () => void;
   onUpdatePreferences: () => void;
+  onRetakeFoodSurvey: () => void;
 }) {
   const [logStatus, setLogStatus] = useState<Record<number, LogStatus>>({});
 
@@ -52,6 +54,9 @@ export default function CraftedMealsList({
         <View style={styles.navLinks}>
           <Pressable onPress={onUpdatePreferences}>
             <Text style={styles.navLink}>Preferences</Text>
+          </Pressable>
+          <Pressable onPress={onRetakeFoodSurvey}>
+            <Text style={styles.navLink}>Retake taste quiz</Text>
           </Pressable>
           <Pressable onPress={onGoToDiary}>
             <Text style={styles.navLink}>Diary</Text>

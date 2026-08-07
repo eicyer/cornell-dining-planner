@@ -40,6 +40,10 @@ _Avoid_: Filter, restriction
 A user preference used only to rank or break ties between candidate meals that already satisfy all Hard Constraints — liked/disliked foods, and "prefer whole & minimally processed foods." Never enforced as a filter (a disliked food can still appear if nothing else fits the macro target). Scored deterministically first (substring/category matching, see [[0009-deterministic-preference-preranking]]), then the LLM polish step picks among the top-ranked candidates and writes the name/rationale — never the optimizer.
 _Avoid_: Preference (too broad — use this term only for the tie-breaking kind)
 
+**Food Preference Survey**:
+A 10-round pairwise "would you rather" onboarding step (see [[0011-food-preference-survey]]) that derives Soft Preference signal without requiring free-text input. Each round's winning item's tags get +1, the losing item's tags -1 (skip = no-op); tags with positive net become `liked_tags`, negative net become `disliked_tags` — merged into the same fields free-text parsing (`app.services.preference_parsing`) populates, deduped, never clobbered. Runs after diet restrictions/allergens are saved, so pairs containing an item the user can't eat are filtered out. Tracked per user via `UserPreference.food_survey_completed`; every user (new or existing) who hasn't completed it is prompted once, and can retake it anytime from the crafted-meals/diary header.
+_Avoid_: none
+
 **Activity Level**:
 A user's self-reported exercise frequency (sedentary through very active), used as the multiplier from BMR to TDEE in Recommended Targets. Input to Recommended Targets only.
 _Avoid_: none

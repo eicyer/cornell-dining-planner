@@ -8,10 +8,12 @@ export default function DiaryScreen({
   onGoToToday,
   onLogout,
   onUpdatePreferences,
+  onRetakeFoodSurvey,
 }: {
   onGoToToday: () => void;
   onLogout: () => void;
   onUpdatePreferences: () => void;
+  onRetakeFoodSurvey: () => void;
 }) {
   const [meals, setMeals] = useState<LoggedMeal[] | null>(null);
   const [summary, setSummary] = useState<DaySummary[] | null>(null);
@@ -65,6 +67,9 @@ export default function DiaryScreen({
           </Pressable>
           <Pressable onPress={onUpdatePreferences}>
             <Text style={styles.navLink}>Preferences</Text>
+          </Pressable>
+          <Pressable onPress={onRetakeFoodSurvey}>
+            <Text style={styles.navLink}>Retake taste quiz</Text>
           </Pressable>
           <Pressable onPress={onLogout}>
             <Text style={styles.navLink}>Log out</Text>

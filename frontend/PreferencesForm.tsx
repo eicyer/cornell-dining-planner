@@ -38,6 +38,7 @@ const DEFAULTS: Preferences = {
   liked_tags: [],
   disliked_tags: [],
   prefer_whole_foods: false,
+  food_survey_completed: false,
 };
 
 const ACTIVITY_LABELS: Record<ActivityLevel, string> = {

@@ -12,6 +12,7 @@ import { Archivo_400Regular, Archivo_500Medium, Archivo_600SemiBold } from '@exp
 import { IBMPlexMono_400Regular, IBMPlexMono_500Medium } from '@expo-google-fonts/ibm-plex-mono';
 import { EateryCrafted, EateryMenu, Me, Preferences, getCraftedMealsToday, getMe, getMenusToday, getPreferences, loginUrl, logout } from './api';
 import PreferencesForm from './PreferencesForm';
+import FoodSurveyScreen from './FoodSurveyScreen';
 import CraftedMealsList from './CraftedMealsList';
 import DiaryScreen from './DiaryScreen';
 import EateryDetailScreen from './EateryDetailScreen';
@@ -22,6 +23,7 @@ type Screen =
   | { kind: 'error'; message: string }
   | { kind: 'logged_out' }
   | { kind: 'survey'; existing: Preferences | null }
+  | { kind: 'foodSurvey' }
   | { kind: 'crafted'; eateries: EateryCrafted[] }
   | { kind: 'diary' }
   | { kind: 'eateryDetail'; eatery: EateryMenu };
@@ -63,11 +65,23 @@ export default function App() {
         setScreen({ kind: 'survey', existing: null });
         return;
       }
+      if (!prefs.food_survey_completed) {
+        setScreen({ kind: 'foodSurvey' });
+        return;
+      }
 
       await loadCraftedMeals();
     } catch (err: any) {
       setScreen({ kind: 'error', message: err.message });
     }
+  }
+
+  function handlePreferencesSaved(prefs: Preferences) {
+    if (!prefs.food_survey_completed) {
+      setScreen({ kind: 'foodSurvey' });
+      return;
+    }
+    loadCraftedMeals();
   }
 
   async function handleSelectEatery(eateryId: number) {
@@ -91,6 +105,10 @@ export default function App() {
     } catch (err: any) {
       setScreen({ kind: 'error', message: err.message });
     }
+  }
+
+  function handleRetakeFoodSurvey() {
+    setScreen({ kind: 'foodSurvey' });
   }
 
   async function handleLogout() {
@@ -146,14 +164,27 @@ export default function App() {
   if (screen.kind === 'survey') {
     return (
       <View style={styles.surveyContainer}>
-        <PreferencesForm initial={screen.existing} onSaved={loadCraftedMeals} />
+        <PreferencesForm initial={screen.existing} onSaved={handlePreferencesSaved} />
+      </View>
+    );
+  }
+
+  if (screen.kind === 'foodSurvey') {
+    return (
+      <View style={styles.surveyContainer}>
+        <FoodSurveyScreen onDone={loadCraftedMeals} />
       </View>
     );
   }
 
   if (screen.kind === 'diary') {
     return (
-      <DiaryScreen onGoToToday={loadCraftedMeals} onLogout={handleLogout} onUpdatePreferences={handleUpdatePreferences} />
+      <DiaryScreen
+        onGoToToday={loadCraftedMeals}
+        onLogout={handleLogout}
+        onUpdatePreferences={handleUpdatePreferences}
+        onRetakeFoodSurvey={handleRetakeFoodSurvey}
+      />
     );
   }
 
@@ -174,6 +205,7 @@ export default function App() {
       onSelectEatery={handleSelectEatery}
       onLogout={handleLogout}
       onUpdatePreferences={handleUpdatePreferences}
+      onRetakeFoodSurvey={handleRetakeFoodSurvey}
     />
   );
 }

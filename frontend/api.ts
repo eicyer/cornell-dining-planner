@@ -70,6 +70,7 @@ export type Preferences = {
   liked_tags: string[];
   disliked_tags: string[];
   prefer_whole_foods: boolean;
+  food_survey_completed: boolean;
 };
 
 export async function getPreferences(): Promise<Preferences | null> {
@@ -115,6 +116,30 @@ export async function recommendTargets(input: RecommendTargetsInput): Promise<Re
     body: JSON.stringify(input),
   });
   if (!res.ok) throw new Error(await errorMessage(res, `POST /preferences/recommend-targets failed: ${res.status}`));
+  return res.json();
+}
+
+// --- Food Preference Survey (onboarding "would you rather" quiz) ---
+
+export type FoodSurveyItem = { id: string; name: string };
+export type FoodSurveyPair = { id: string; item_a: FoodSurveyItem; item_b: FoodSurveyItem };
+export type FoodSurveyChoice = 'a' | 'b' | 'skip';
+export type FoodSurveyResponse = { pair_id: string; choice: FoodSurveyChoice };
+
+export async function getFoodSurveyPairs(): Promise<FoodSurveyPair[]> {
+  const res = await apiFetch('/preferences/food-survey');
+  if (!res.ok) throw new Error(await errorMessage(res, `GET /preferences/food-survey failed: ${res.status}`));
+  const body = await res.json();
+  return body.pairs;
+}
+
+export async function submitFoodSurvey(responses: FoodSurveyResponse[]): Promise<Preferences> {
+  const res = await apiFetch('/preferences/food-survey', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ responses }),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `POST /preferences/food-survey failed: ${res.status}`));
   return res.json();
 }
 

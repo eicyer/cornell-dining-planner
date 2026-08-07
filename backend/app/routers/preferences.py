@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
@@ -5,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_user
 from app.db.models import ActivityLevel, HealthGoal, MacroStyle, Sex, TargetMode, User, UserPreference
 from app.db.session import get_db
+from app.services.food_survey import SurveyResponse, build_survey, merge_tags, score_survey
 from app.services.llm_enrichment import ALLERGENS, DIET_TAGS
 from app.services.preference_parsing import parse_preferences
 from app.services.tdee import recommend_targets
@@ -87,6 +90,7 @@ class PreferencesOut(BaseModel):
     liked_tags: list[str]
     disliked_tags: list[str]
     prefer_whole_foods: bool
+    food_survey_completed: bool
 
 
 class RecommendTargetsIn(BaseModel):
@@ -165,6 +169,70 @@ async def put_preferences(
     )
     prefs.liked_tags = liked_tags
     prefs.disliked_tags = disliked_tags
+
+    db.commit()
+    db.refresh(prefs)
+    return prefs
+
+
+# --- Food Preference Survey — see docs/adr/0011-food-preference-survey ---
+
+
+class FoodSurveyItemOut(BaseModel):
+    id: str
+    name: str
+
+
+class FoodSurveyPairOut(BaseModel):
+    id: str
+    item_a: FoodSurveyItemOut
+    item_b: FoodSurveyItemOut
+
+
+class FoodSurveyOut(BaseModel):
+    pairs: list[FoodSurveyPairOut]
+
+
+class FoodSurveyResponseIn(BaseModel):
+    pair_id: str
+    choice: Literal["a", "b", "skip"]
+
+
+class FoodSurveySubmitIn(BaseModel):
+    responses: list[FoodSurveyResponseIn] = Field(min_length=0, max_length=10)
+
+
+def _get_prefs_or_404(user: User, db: Session) -> UserPreference:
+    prefs = db.query(UserPreference).filter(UserPreference.user_id == user.id).one_or_none()
+    if prefs is None:
+        raise HTTPException(status_code=404, detail="Save diet/allergen preferences first")
+    return prefs
+
+
+@router.get("/preferences/food-survey", response_model=FoodSurveyOut)
+def get_food_survey(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> FoodSurveyOut:
+    prefs = _get_prefs_or_404(user, db)
+    pairs = build_survey(prefs.diet_restrictions, prefs.allergens)
+    return FoodSurveyOut(
+        pairs=[
+            FoodSurveyPairOut(
+                id=p.id,
+                item_a=FoodSurveyItemOut(id=p.item_a.id, name=p.item_a.name),
+                item_b=FoodSurveyItemOut(id=p.item_b.id, name=p.item_b.name),
+            )
+            for p in pairs
+        ]
+    )
+
+
+@router.post("/preferences/food-survey", response_model=PreferencesOut)
+def submit_food_survey(
+    body: FoodSurveySubmitIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    prefs = _get_prefs_or_404(user, db)
+    liked, disliked = score_survey([SurveyResponse(pair_id=r.pair_id, choice=r.choice) for r in body.responses])
+    prefs.liked_tags, prefs.disliked_tags = merge_tags(prefs.liked_tags, prefs.disliked_tags, liked, disliked)
+    prefs.food_survey_completed = True
 
     db.commit()
     db.refresh(prefs)
