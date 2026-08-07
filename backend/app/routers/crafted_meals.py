@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_user
 from app.db.models import DietTag, Eatery, MenuEvent, MenuItem, NutritionMatch, User, UserPreference
 from app.db.session import get_db
+from app.services.customizable_items import plate_grams_for, variant_names
 from app.services.llm_enrichment import make_client as make_llm_client
 from app.services.meal_crafting import HardConstraints, ItemNutrition, generate_candidates, per_meal_target
 from app.services.meal_polish import polish_meal
@@ -101,22 +102,27 @@ async def crafted_meals_today(
 
         item_nutritions = []
         for item in menu_items:
-            nutrition = nutrition_by_name.get(item.name)
-            if nutrition is None:
-                continue
-            diet_tag = diet_by_name.get(item.name)
-            item_nutritions.append(
-                ItemNutrition(
-                    name=item.name,
-                    category=item.category,
-                    calories_per_100g=nutrition.calories_per_100g,
-                    protein_g_per_100g=nutrition.protein_g_per_100g,
-                    carbs_g_per_100g=nutrition.carbs_g_per_100g,
-                    fat_g_per_100g=nutrition.fat_g_per_100g,
-                    diet_tags=diet_tag.diet_tags if diet_tag else [],
-                    likely_allergens=diet_tag.likely_allergens if diet_tag else [],
+            # A customizable item (see app.services.customizable_items) expands
+            # into one ItemNutrition per protein variant here — the raw feed
+            # name alone never has a Nutrition Match, only its variants do.
+            for name in variant_names(item.name):
+                nutrition = nutrition_by_name.get(name)
+                if nutrition is None:
+                    continue
+                diet_tag = diet_by_name.get(name)
+                item_nutritions.append(
+                    ItemNutrition(
+                        name=name,
+                        category=item.category,
+                        calories_per_100g=nutrition.calories_per_100g,
+                        protein_g_per_100g=nutrition.protein_g_per_100g,
+                        carbs_g_per_100g=nutrition.carbs_g_per_100g,
+                        fat_g_per_100g=nutrition.fat_g_per_100g,
+                        diet_tags=diet_tag.diet_tags if diet_tag else [],
+                        likely_allergens=diet_tag.likely_allergens if diet_tag else [],
+                        fixed_serving_grams=plate_grams_for(name),
+                    )
                 )
-            )
 
         candidates = generate_candidates(item_nutritions, target, constraints)
         if not candidates:

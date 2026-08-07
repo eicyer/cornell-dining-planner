@@ -12,12 +12,12 @@ import asyncio
 import logging
 
 import httpx
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import DietTag, Eatery, MenuEvent, MenuItem, NutritionMatch, NutritionSource
 from app.db.session import SessionLocal
 from app.services import usda
+from app.services.customizable_items import variant_names
 from app.services.llm_enrichment import EnrichmentResult, enrich_item, make_client
 
 logger = logging.getLogger(__name__)
@@ -33,18 +33,29 @@ CONCURRENCY = 5
 
 def find_unenriched_items(db: Session) -> list[tuple[str, str, str]]:
     """Distinct (item_name, category, eatery_name) for items with no cached
-    NutritionMatch yet. One representative category/eatery per item name."""
-    enriched_names = select(NutritionMatch.item_name)
+    NutritionMatch yet. One representative category/eatery per item name.
+
+    Customizable items (see app.services.customizable_items) never appear in
+    the feed under their variant names, so a raw name notin_() filter against
+    NutritionMatch would never see them as "already enriched." Instead, every
+    raw name is expanded to its variant names first (a no-op for ordinary
+    items) and the enriched check happens after expansion, in Python."""
+    enriched_names = {name for (name,) in db.query(NutritionMatch.item_name).all()}
 
     rows = (
         db.query(MenuItem.name, MenuItem.category, Eatery.name)
         .join(MenuEvent, MenuItem.menu_event_id == MenuEvent.id)
         .join(Eatery, MenuEvent.eatery_id == Eatery.id)
-        .filter(MenuItem.name.notin_(enriched_names))
         .distinct(MenuItem.name)
         .all()
     )
-    return list(rows)
+
+    unenriched: list[tuple[str, str, str]] = []
+    for name, category, eatery_name in rows:
+        for variant in variant_names(name):
+            if variant not in enriched_names:
+                unenriched.append((variant, category, eatery_name))
+    return unenriched
 
 
 async def enrich_one(

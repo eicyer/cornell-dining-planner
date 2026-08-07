@@ -16,6 +16,10 @@ _Avoid_: Meal period (used interchangeably, but "Menu Event" is the API/data ter
 A single dish as named in the dining API feed (e.g. "Grilled Broccoli"). Distinct from a Nutrition Item — the two are matched, not identical.
 _Avoid_: Dish, food
 
+**Customizable Item**:
+A Menu Item the feed lists under one generic name but that's only ever served as a whole plate with a choice of protein (e.g. "Customizable Iron Grill Stir-Fry" → pork/chicken/tofu). Expanded into one Nutrition Match/Diet Tag per protein variant before enrichment or Crafted Meal generation ever sees the raw name — see [[0010-customizable-items]].
+_Avoid_: Combo item, build-your-own (fine as plain-English description, but "Customizable Item" is the term used in code/docs)
+
 **Nutrition Match**:
 The mapping from a Menu Item to its calorie/macro density **per 100g** — from a USDA FoodData Central entry when matched (used directly, not re-estimated), or an LLM estimate when not. Deliberately not a portion/serving value — see [[0007-nutrition-per-100g-portion-deferred]]. Cached once resolved so it isn't recomputed on every read.
 _Avoid_: Nutrition lookup, food match, portion (this is a density, not a serving size)

@@ -65,6 +65,10 @@ class ItemNutrition:
     fat_g_per_100g: float
     diet_tags: list[str] = field(default_factory=list)
     likely_allergens: list[str] = field(default_factory=list)
+    # Set only for items that are only ever served as a whole plate (e.g. a
+    # build-your-own stir-fry) — see app.services.customizable_items. Skips
+    # gram-solving entirely instead of being bounded like a normal anchor/side.
+    fixed_serving_grams: float | None = None
 
 
 @dataclass
@@ -206,34 +210,50 @@ def _solve_bounded(
 
 
 def solve_portions(selected: list[ItemNutrition], target: Target) -> MealCandidate | None:
-    """Anchors the meal on its protein item (a dedicated, realistic
-    entree-sized portion sized off the protein target directly), then solves
-    the remaining items against whatever's left of the target. If nothing in
-    the set has any protein, every item is solved jointly against the side
-    bounds instead — there's no anchor to speak of."""
+    """Fixed-serving items (whole-plate-only dishes) are always included at
+    their fixed weight first, never gram-solved. The remaining, flexible
+    items then anchor on their protein item (a dedicated, realistic
+    entree-sized portion sized off whatever's left of the protein target),
+    and solve the rest against whatever's left of the target after that. If
+    nothing in the set has any protein, every flexible item is solved jointly
+    against the side bounds instead — there's no anchor to speak of."""
     if not selected:
         return None
     if target.calories <= 0 or target.protein_g <= 0 or target.carbs_g <= 0 or target.fat_g <= 0:
         return None
 
-    anchor = _pick_anchor(selected)
-    others = [i for i in selected if i is not anchor]
+    fixed = [i for i in selected if i.fixed_serving_grams is not None]
+    flexible = [i for i in selected if i.fixed_serving_grams is None]
 
     items: list[CraftedItem] = []
     totals = {"calories": 0.0, "protein_g": 0.0, "carbs_g": 0.0, "fat_g": 0.0}
     remaining_target = target
 
-    if anchor is not None:
-        grams_for_target = target.protein_g / anchor.protein_g_per_100g * 100
-        anchor_grams = min(max(grams_for_target, ANCHOR_MIN_GRAMS), ANCHOR_MAX_GRAMS)
-        anchor_grams = round(anchor_grams / GRAMS_ROUNDING) * GRAMS_ROUNDING
-        _append_item(items, totals, anchor, anchor_grams)
+    for item in fixed:
+        _append_item(items, totals, item, item.fixed_serving_grams)
 
+    if fixed:
         remaining_target = Target(
             calories=max(target.calories - totals["calories"], 0.0),
             protein_g=max(target.protein_g - totals["protein_g"], 0.0),
             carbs_g=max(target.carbs_g - totals["carbs_g"], 0.0),
             fat_g=max(target.fat_g - totals["fat_g"], 0.0),
+        )
+
+    anchor = _pick_anchor(flexible)
+    others = [i for i in flexible if i is not anchor]
+
+    if anchor is not None:
+        grams_for_target = remaining_target.protein_g / anchor.protein_g_per_100g * 100
+        anchor_grams = min(max(grams_for_target, ANCHOR_MIN_GRAMS), ANCHOR_MAX_GRAMS)
+        anchor_grams = round(anchor_grams / GRAMS_ROUNDING) * GRAMS_ROUNDING
+        _append_item(items, totals, anchor, anchor_grams)
+
+        remaining_target = Target(
+            calories=max(remaining_target.calories - anchor.calories_per_100g * anchor_grams / 100, 0.0),
+            protein_g=max(remaining_target.protein_g - anchor.protein_g_per_100g * anchor_grams / 100, 0.0),
+            carbs_g=max(remaining_target.carbs_g - anchor.carbs_g_per_100g * anchor_grams / 100, 0.0),
+            fat_g=max(remaining_target.fat_g - anchor.fat_g_per_100g * anchor_grams / 100, 0.0),
         )
 
     if others:
