@@ -47,13 +47,47 @@ PROTEIN_G_PER_KG: dict[HealthGoal, float] = {
     HealthGoal.gain_weight: 1.8,
 }
 
-# Macro Style only shifts the fat/carb split — protein stays goal-driven
-# either way. "Lower carb" is a moderate tier (fat ~45% of calories, carbs
-# fill what's left), not a keto-level extreme (<10% carbs) — consistent
-# with the "no extremes" rule this module already enforces on calories.
+# high_protein layers this on top of the goal-driven PROTEIN_G_PER_KG above
+# rather than replacing it — losing weight on high_protein should still
+# out-protein maintaining on balanced. Kept modest (the highest combined
+# case, lose_weight + high_protein, lands at 2.5g/kg) to stay inside
+# commonly-cited safe upper ranges rather than another "no extremes"
+# exception like keto below. The calories this claims come straight out of
+# carbs (fat fraction is unchanged from balanced) — that's the "at the
+# expense of variety/other macros" behavior this style is for.
+PROTEIN_G_PER_KG_BOOST_BY_MACRO_STYLE: dict[MacroStyle, float] = {
+    MacroStyle.balanced: 0.0,
+    MacroStyle.lower_carb: 0.0,
+    MacroStyle.keto: 0.0,
+    MacroStyle.high_protein: 0.5,
+}
+
+# Macro Style shifts the fat/carb split — protein stays goal-driven (plus
+# the optional boost above) regardless. "Lower carb" and "high_protein" are
+# moderate tiers, consistent with the "no extremes" rule this module
+# otherwise enforces on calories. "keto" is the deliberate exception: fat
+# ~75% of calories is genuinely keto-level, not a moderate tier — see
+# MAX_NON_CARB_KCAL_FRACTION_BY_MACRO_STYLE below for the other half of
+# what makes that actually reach a keto-range carb count.
 FAT_FRACTION_BY_MACRO_STYLE: dict[MacroStyle, float] = {
     MacroStyle.balanced: 0.28,
     MacroStyle.lower_carb: 0.45,
+    MacroStyle.keto: 0.75,
+    MacroStyle.high_protein: 0.28,
+}
+
+# Guards against protein+fat eating the whole calorie budget (see the scale
+# step in recommend_targets) — this is the mandatory carb floor, as a
+# fraction of total calories protein+fat are allowed to claim before carbs
+# get squeezed to fill whatever's left. 0.85 (a ~15% carb floor) is that
+# guardrail for every style except keto: a true keto diet needs carbs able
+# to shrink well below 15% of calories, which is the whole point of the
+# style, so its cap is deliberately looser.
+MAX_NON_CARB_KCAL_FRACTION_BY_MACRO_STYLE: dict[MacroStyle, float] = {
+    MacroStyle.balanced: 0.85,
+    MacroStyle.lower_carb: 0.85,
+    MacroStyle.keto: 0.92,
+    MacroStyle.high_protein: 0.85,
 }
 
 
@@ -88,15 +122,16 @@ def recommend_targets(
     adjusted = tdee * (1 + GOAL_ADJUSTMENT_FRACTION[health_goal])
     calories = min(max(adjusted, MIN_SAFE_CALORIES[sex]), MAX_SAFE_CALORIES)
 
-    protein_g = weight_kg * PROTEIN_G_PER_KG[health_goal]
+    protein_g = weight_kg * (PROTEIN_G_PER_KG[health_goal] + PROTEIN_G_PER_KG_BOOST_BY_MACRO_STYLE[macro_style])
     protein_kcal = protein_g * 4
     fat_kcal = calories * FAT_FRACTION_BY_MACRO_STYLE[macro_style]
 
     # Guard against protein+fat eating the whole calorie budget at once (a
     # heavy person on a low-calorie goal) — scale both down proportionally
-    # rather than let carbs go negative.
+    # rather than let carbs go negative. The cap itself is per-style; see
+    # MAX_NON_CARB_KCAL_FRACTION_BY_MACRO_STYLE.
     non_carb_kcal = protein_kcal + fat_kcal
-    max_non_carb_kcal = calories * 0.85
+    max_non_carb_kcal = calories * MAX_NON_CARB_KCAL_FRACTION_BY_MACRO_STYLE[macro_style]
     if non_carb_kcal > max_non_carb_kcal:
         scale = max_non_carb_kcal / non_carb_kcal
         protein_kcal *= scale

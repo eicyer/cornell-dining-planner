@@ -10,6 +10,9 @@ export const API_BASE = Platform.OS === 'web' ? 'http://localhost:8001' : 'http:
 export const DIET_TAGS = ['vegan', 'vegetarian', 'gluten_free', 'dairy_free', 'halal', 'kosher'];
 export const ALLERGENS = ['dairy', 'eggs', 'gluten', 'soy', 'peanuts', 'tree_nuts', 'fish', 'shellfish', 'sesame'];
 
+// Mirrors app/services/eating_styles.py — see docs/adr/0015.
+export const EATING_STYLES = ['low_sugar', 'high_fiber', 'whole_foods_focus'];
+
 function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
   return fetch(`${API_BASE}${path}`, { ...options, credentials: 'include' });
 }
@@ -43,7 +46,7 @@ export type ActivityLevel = (typeof ACTIVITY_LEVELS)[number];
 export const HEALTH_GOALS = ['lose_weight', 'maintain_weight', 'gain_weight'] as const;
 export type HealthGoal = (typeof HEALTH_GOALS)[number];
 
-export const MACRO_STYLES = ['balanced', 'lower_carb'] as const;
+export const MACRO_STYLES = ['balanced', 'lower_carb', 'keto', 'high_protein'] as const;
 export type MacroStyle = (typeof MACRO_STYLES)[number];
 
 export type Sex = 'male' | 'female';
@@ -69,7 +72,7 @@ export type Preferences = {
   disliked_foods_text: string | null;
   liked_tags: string[];
   disliked_tags: string[];
-  prefer_whole_foods: boolean;
+  eating_styles: string[];
   food_survey_completed: boolean;
 };
 
@@ -176,13 +179,15 @@ export type CraftedItem = {
   protein_g: number;
   carbs_g: number;
   fat_g: number;
+  sugar_g: number;
+  fiber_g: number;
 };
 
 export type CraftedMeal = {
   name: string;
   rationale: string;
   items: CraftedItem[];
-  totals: { calories: number; protein_g: number; carbs_g: number; fat_g: number };
+  totals: { calories: number; protein_g: number; carbs_g: number; fat_g: number; sugar_g: number; fiber_g: number };
 };
 
 export type EateryCrafted = {

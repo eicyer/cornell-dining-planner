@@ -117,6 +117,13 @@ class ItemNutrition:
     # build-your-own stir-fry) — see app.services.customizable_items. Skips
     # gram-solving entirely instead of being bounded like a normal anchor/side.
     fixed_serving_grams: float | None = None
+    # Informational only — never a Hard Constraint or a solve target (there's
+    # no "daily sugar/fiber goal" field), just data for
+    # app.services.preference_scoring's eating-style rules to read off the
+    # final candidate. Defaults to 0.0 rather than None so callers with no
+    # data for an item (see docs/adr/0014) don't need a null check.
+    sugar_g_per_100g: float = 0.0
+    fiber_g_per_100g: float = 0.0
 
 
 @dataclass
@@ -142,6 +149,8 @@ class CraftedItem:
     protein_g: float
     carbs_g: float
     fat_g: float
+    sugar_g: float
+    fiber_g: float
 
 
 @dataclass
@@ -225,16 +234,21 @@ def _append_item(
     protein_g = item.protein_g_per_100g * grams / 100
     carbs_g = item.carbs_g_per_100g * grams / 100
     fat_g = item.fat_g_per_100g * grams / 100
+    sugar_g = item.sugar_g_per_100g * grams / 100
+    fiber_g = item.fiber_g_per_100g * grams / 100
     items.append(
         CraftedItem(
             name=item.name, category=item.category, grams=grams,
             calories=calories, protein_g=protein_g, carbs_g=carbs_g, fat_g=fat_g,
+            sugar_g=sugar_g, fiber_g=fiber_g,
         )
     )
     totals["calories"] += calories
     totals["protein_g"] += protein_g
     totals["carbs_g"] += carbs_g
     totals["fat_g"] += fat_g
+    totals["sugar_g"] += sugar_g
+    totals["fiber_g"] += fiber_g
 
 
 def _reduce_target(target: Target, item: ItemNutrition, grams: float) -> Target:
@@ -304,7 +318,7 @@ def solve_portions(selected: list[ItemNutrition], target: Target) -> MealCandida
     flexible = [i for i in selected if i.fixed_serving_grams is None]
 
     items: list[CraftedItem] = []
-    totals = {"calories": 0.0, "protein_g": 0.0, "carbs_g": 0.0, "fat_g": 0.0}
+    totals = {"calories": 0.0, "protein_g": 0.0, "carbs_g": 0.0, "fat_g": 0.0, "sugar_g": 0.0, "fiber_g": 0.0}
     remaining_target = target
 
     for item in fixed:

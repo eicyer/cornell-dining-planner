@@ -21,6 +21,7 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.services.customizable_items import variant_names
+from app.services.eating_styles import EATING_STYLES
 from app.services.food_survey import SurveyResponse, build_survey, merge_tags, score_survey
 from app.services.llm_enrichment import ALLERGENS, DIET_TAGS
 from app.services.preference_parsing import parse_preferences
@@ -64,8 +65,9 @@ class PreferencesIn(BaseModel):
     liked_foods_text: str | None = None
     disliked_foods_text: str | None = None
     # Soft Preference, scored deterministically before the LLM polish step —
-    # see docs/adr/0009-deterministic-preference-preranking.
-    prefer_whole_foods: bool = False
+    # see docs/adr/0009-deterministic-preference-preranking and
+    # docs/adr/0015-eating-styles-registry.
+    eating_styles: list[str] = []
 
     @field_validator("diet_restrictions")
     @classmethod
@@ -81,6 +83,14 @@ class PreferencesIn(BaseModel):
         invalid = set(v) - set(ALLERGENS)
         if invalid:
             raise ValueError(f"Unknown allergens {invalid}, must be a subset of {ALLERGENS}")
+        return v
+
+    @field_validator("eating_styles")
+    @classmethod
+    def _validate_eating_styles(cls, v: list[str]) -> list[str]:
+        invalid = set(v) - set(EATING_STYLES)
+        if invalid:
+            raise ValueError(f"Unknown eating_styles {invalid}, must be a subset of {EATING_STYLES}")
         return v
 
 
@@ -104,7 +114,7 @@ class PreferencesOut(BaseModel):
     disliked_foods_text: str | None
     liked_tags: list[str]
     disliked_tags: list[str]
-    prefer_whole_foods: bool
+    eating_styles: list[str]
     food_survey_completed: bool
 
 
@@ -177,7 +187,7 @@ async def put_preferences(
     prefs.target_mode = body.target_mode
     prefs.liked_foods_text = body.liked_foods_text
     prefs.disliked_foods_text = body.disliked_foods_text
-    prefs.prefer_whole_foods = body.prefer_whole_foods
+    prefs.eating_styles = body.eating_styles
 
     liked_tags, disliked_tags = await parse_preferences(
         make_llm_client(), body.liked_foods_text, body.disliked_foods_text

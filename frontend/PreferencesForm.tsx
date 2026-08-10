@@ -5,6 +5,7 @@ import {
   ActivityLevel,
   ALLERGENS,
   DIET_TAGS,
+  EATING_STYLES,
   HEALTH_GOALS,
   HealthGoal,
   MACRO_STYLES,
@@ -37,7 +38,7 @@ const DEFAULTS: Preferences = {
   disliked_foods_text: '',
   liked_tags: [],
   disliked_tags: [],
-  prefer_whole_foods: false,
+  eating_styles: [],
   food_survey_completed: false,
 };
 
@@ -58,6 +59,14 @@ const HEALTH_GOAL_LABELS: Record<HealthGoal, string> = {
 const MACRO_STYLE_LABELS: Record<MacroStyle, string> = {
   balanced: 'Balanced',
   lower_carb: 'Lower carb',
+  keto: 'Keto',
+  high_protein: 'High protein',
+};
+
+const EATING_STYLE_LABELS: Record<string, string> = {
+  low_sugar: 'Less refined sugar',
+  high_fiber: 'Emphasize fiber',
+  whole_foods_focus: 'Prefer whole & minimally processed foods',
 };
 
 function Chip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
@@ -311,13 +320,17 @@ export default function PreferencesForm({
         ))}
       </View>
 
-      <Text style={styles.label}>Food quality</Text>
+      <Text style={styles.label}>Eating style</Text>
+      <Text style={styles.fieldCaption}>Select any that apply — these fine-tune which meals we suggest, never rule anything out.</Text>
       <View style={styles.chipRow}>
-        <Chip
-          label="Prefer whole & minimally processed foods"
-          selected={prefs.prefer_whole_foods}
-          onPress={() => setPrefs({ ...prefs, prefer_whole_foods: !prefs.prefer_whole_foods })}
-        />
+        {EATING_STYLES.map((style) => (
+          <Chip
+            key={style}
+            label={EATING_STYLE_LABELS[style] ?? style}
+            selected={prefs.eating_styles.includes(style)}
+            onPress={() => setPrefs({ ...prefs, eating_styles: toggle(prefs.eating_styles, style) })}
+          />
+        ))}
       </View>
 
       <Text style={styles.label}>Foods you like</Text>

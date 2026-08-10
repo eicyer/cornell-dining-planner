@@ -50,10 +50,14 @@ class HealthGoal(str, enum.Enum):
 
 class MacroStyle(str, enum.Enum):
     """How calories are split across protein/carb/fat in Recommended Targets
-    — see app.services.tdee. Never filters foods; that's diet_restrictions."""
+    — see app.services.tdee. Never filters foods; that's diet_restrictions.
+    keto and high_protein are deliberate exceptions to the "no extremes"
+    stance the other two styles hold to — see app.services.tdee."""
 
     balanced = "balanced"
     lower_carb = "lower_carb"
+    keto = "keto"
+    high_protein = "high_protein"
 
 
 class TargetMode(str, enum.Enum):
@@ -118,8 +122,11 @@ class UserPreference(Base):
     liked_tags: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
     disliked_tags: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
     # Soft Preference, scored deterministically in app.services.preference_scoring
-    # — see docs/adr/0009-deterministic-preference-preranking.
-    prefer_whole_foods: Mapped[bool] = mapped_column(Boolean, default=False)
+    # — see docs/adr/0009-deterministic-preference-preranking and
+    # docs/adr/0015-eating-styles-registry. Multi-select, validated against
+    # app.services.eating_styles.EATING_STYLES. Replaces the old
+    # prefer_whole_foods boolean ("whole_foods_focus" is now one entry here).
+    eating_styles: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
 
     # Whether the pairwise food survey (app.services.food_survey) has been
     # completed — see docs/adr/0011-food-preference-survey. Its results merge

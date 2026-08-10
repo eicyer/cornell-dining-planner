@@ -46,6 +46,8 @@ class CraftedItemOut(BaseModel):
     protein_g: float
     carbs_g: float
     fat_g: float
+    sugar_g: float
+    fiber_g: float
 
 
 class CraftedMealOut(BaseModel):
@@ -121,6 +123,8 @@ async def crafted_meals_today(
                         diet_tags=diet_tag.diet_tags if diet_tag else [],
                         likely_allergens=diet_tag.likely_allergens if diet_tag else [],
                         fixed_serving_grams=plate_grams_for(name),
+                        sugar_g_per_100g=nutrition.sugar_g_per_100g or 0.0,
+                        fiber_g_per_100g=nutrition.fiber_g_per_100g or 0.0,
                     )
                 )
 
@@ -135,7 +139,7 @@ async def crafted_meals_today(
             )
             continue
 
-        ranked = rank_candidates(candidates, prefs.liked_tags, prefs.disliked_tags, prefs.prefer_whole_foods)
+        ranked = rank_candidates(candidates, prefs.liked_tags, prefs.disliked_tags, prefs.eating_styles)
         polished = await polish_meal(llm_client, ranked, target, prefs.liked_tags, prefs.disliked_tags)
         chosen = ranked[polished.candidate_index]
 
