@@ -143,6 +143,31 @@ export async function submitFoodSurvey(responses: FoodSurveyResponse[]): Promise
   return res.json();
 }
 
+// --- Station Survey (compare today's actual staple-station picks at one
+// eatery — see docs/adr/0013). Repeatable, eatery-scoped; reuses the same
+// FoodSurveyPair/FoodSurveyResponse shapes as the onboarding quiz above. ---
+
+export async function getStationSurveyPairs(eateryId: number): Promise<FoodSurveyPair[]> {
+  const res = await apiFetch(`/preferences/station-survey/${eateryId}`);
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, `GET /preferences/station-survey/${eateryId} failed: ${res.status}`));
+  }
+  const body = await res.json();
+  return body.pairs;
+}
+
+export async function submitStationSurvey(eateryId: number, responses: FoodSurveyResponse[]): Promise<Preferences> {
+  const res = await apiFetch(`/preferences/station-survey/${eateryId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ responses }),
+  });
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, `POST /preferences/station-survey/${eateryId} failed: ${res.status}`));
+  }
+  return res.json();
+}
+
 export type CraftedItem = {
   name: string;
   category: string;

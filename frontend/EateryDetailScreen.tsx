@@ -4,13 +4,29 @@ import { EateryMenu, LoggedMeal, logMeal } from './api';
 import { describePortion } from './foodDensity';
 import { colors, radius, space, type } from './theme';
 
+// Mirrors app/services/station_survey.py's STAPLE_STATIONS — keep in sync
+// manually (no shared schema, same precedent as DIET_TAGS/ALLERGENS in
+// api.ts). Only used to decide whether "Compare today's picks" is worth
+// showing; the backend is still the source of truth for what's comparable.
+const STAPLE_STATION_CATEGORIES = new Set([
+  'grill', 'flat top grill', 'iron grill', 'pizza', 'pizza station', "chef's table",
+]);
+
+function hasStapleStation(eatery: EateryMenu): boolean {
+  return eatery.menu_events.some((event) =>
+    event.categories.some((c) => STAPLE_STATION_CATEGORIES.has(c.category.trim().toLowerCase()))
+  );
+}
+
 export default function EateryDetailScreen({
   eatery,
   onBack,
+  onCompare,
   onLogged,
 }: {
   eatery: EateryMenu;
   onBack: () => void;
+  onCompare: () => void;
   onLogged: (meal: LoggedMeal) => void;
 }) {
   const [eventIndex, setEventIndex] = useState(0);
@@ -74,6 +90,12 @@ export default function EateryDetailScreen({
           <Text style={styles.back}>{'← Back'}</Text>
         </Pressable>
         <Text style={styles.title}>{eatery.name}</Text>
+
+        {hasStapleStation(eatery) && (
+          <Pressable onPress={onCompare} style={styles.compareLink}>
+            <Text style={styles.compareLinkText}>Compare today's picks →</Text>
+          </Pressable>
+        )}
 
         {eatery.menu_events.length > 1 && (
           <View style={styles.tabs}>
@@ -139,7 +161,9 @@ const styles = StyleSheet.create({
   back: { ...type.body, fontSize: 13, color: colors.inkSecondary, marginBottom: space.sm },
   backButton: { marginTop: space.lg, padding: space.md },
   backButtonText: { ...type.body, color: colors.accent, fontFamily: 'Archivo_600SemiBold' },
-  title: { fontFamily: 'Fraunces_700Bold', fontSize: 30, lineHeight: 36, color: colors.ink, marginBottom: space.lg },
+  title: { fontFamily: 'Fraunces_700Bold', fontSize: 30, lineHeight: 36, color: colors.ink, marginBottom: space.sm },
+  compareLink: { marginBottom: space.lg, alignSelf: 'flex-start' },
+  compareLinkText: { ...type.kicker, color: colors.accent },
   tabs: { flexDirection: 'row', marginBottom: space.xl, gap: space.lg },
   tab: { paddingVertical: space.xs, borderBottomWidth: 2, borderBottomColor: 'transparent' },
   tabActive: { borderBottomColor: colors.accent },

@@ -1,3 +1,4 @@
+import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -5,11 +6,25 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user
-from app.db.models import ActivityLevel, HealthGoal, MacroStyle, Sex, TargetMode, User, UserPreference
+from app.db.models import (
+    ActivityLevel,
+    DietTag,
+    Eatery,
+    HealthGoal,
+    MacroStyle,
+    MenuEvent,
+    MenuItem,
+    Sex,
+    TargetMode,
+    User,
+    UserPreference,
+)
 from app.db.session import get_db
+from app.services.customizable_items import variant_names
 from app.services.food_survey import SurveyResponse, build_survey, merge_tags, score_survey
 from app.services.llm_enrichment import ALLERGENS, DIET_TAGS
 from app.services.preference_parsing import parse_preferences
+from app.services.station_survey import StationItem, build_station_survey
 from app.services.tdee import recommend_targets
 from app.services.llm_enrichment import make_client as make_llm_client
 
@@ -233,6 +248,98 @@ def submit_food_survey(
     liked, disliked = score_survey([SurveyResponse(pair_id=r.pair_id, choice=r.choice) for r in body.responses])
     prefs.liked_tags, prefs.disliked_tags = merge_tags(prefs.liked_tags, prefs.disliked_tags, liked, disliked)
     prefs.food_survey_completed = True
+
+    db.commit()
+    db.refresh(prefs)
+    return prefs
+
+
+# --- Station Survey — compare today's actual staple-station options at one
+# eatery (Grill/Pizza/Chef's Table), see docs/adr/0013. Separate from the
+# one-time Food Preference Survey above: repeatable, eatery-scoped, and
+# never sets food_survey_completed. ---
+
+
+def _todays_station_items(db: Session, eatery_id: int) -> list[StationItem]:
+    """Every distinct item name across *all* of today's menu events at this
+    eatery (not just the current meal period — Grill/Pizza staples often
+    span breakfast/lunch/dinner), with cached diet tags attached. Items with
+    no DietTag row yet are skipped rather than assumed compatible, same
+    caution app.routers.crafted_meals already applies to missing nutrition
+    data."""
+    today = datetime.date.today()
+    menu_event_ids = [
+        e.id for e in db.query(MenuEvent.id).filter(MenuEvent.eatery_id == eatery_id, MenuEvent.date == today).all()
+    ]
+    if not menu_event_ids:
+        return []
+
+    menu_items = db.query(MenuItem).filter(MenuItem.menu_event_id.in_(menu_event_ids)).all()
+    diet_by_name = {d.item_name: d for d in db.query(DietTag).all()}
+
+    by_name: dict[str, StationItem] = {}
+    for item in menu_items:
+        for name in variant_names(item.name):
+            diet_tag = diet_by_name.get(name)
+            if diet_tag is None or name in by_name:
+                continue
+            by_name[name] = StationItem(
+                name=name, category=item.category,
+                diet_tags=diet_tag.diet_tags, allergens=diet_tag.likely_allergens,
+            )
+    return list(by_name.values())
+
+
+class StationSurveyOut(BaseModel):
+    eatery_id: int
+    eatery_name: str
+    pairs: list[FoodSurveyPairOut]
+
+
+class StationSurveySubmitIn(BaseModel):
+    responses: list[FoodSurveyResponseIn] = Field(min_length=0, max_length=10)
+
+
+@router.get("/preferences/station-survey/{eatery_id}", response_model=StationSurveyOut)
+def get_station_survey(
+    eatery_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+) -> StationSurveyOut:
+    prefs = _get_prefs_or_404(user, db)
+    eatery = db.get(Eatery, eatery_id)
+    if eatery is None:
+        raise HTTPException(status_code=404, detail="Eatery not found")
+
+    items = _todays_station_items(db, eatery_id)
+    pairs = build_station_survey(eatery_id, items, prefs.diet_restrictions, prefs.allergens)
+    return StationSurveyOut(
+        eatery_id=eatery_id,
+        eatery_name=eatery.name,
+        pairs=[
+            FoodSurveyPairOut(
+                id=p.id,
+                item_a=FoodSurveyItemOut(id=p.item_a.id, name=p.item_a.name),
+                item_b=FoodSurveyItemOut(id=p.item_b.id, name=p.item_b.name),
+            )
+            for p in pairs
+        ],
+    )
+
+
+@router.post("/preferences/station-survey/{eatery_id}", response_model=PreferencesOut)
+def submit_station_survey(
+    eatery_id: int, body: StationSurveySubmitIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    prefs = _get_prefs_or_404(user, db)
+    items = _todays_station_items(db, eatery_id)
+    # Re-derived, not looked up from GET-time state (there is none) — see
+    # build_station_survey's determinism contract.
+    pairs = build_station_survey(eatery_id, items, prefs.diet_restrictions, prefs.allergens)
+    pairs_by_id = {p.id: p for p in pairs}
+
+    liked, disliked = score_survey(
+        [SurveyResponse(pair_id=r.pair_id, choice=r.choice) for r in body.responses], pairs_by_id=pairs_by_id
+    )
+    prefs.liked_tags, prefs.disliked_tags = merge_tags(prefs.liked_tags, prefs.disliked_tags, liked, disliked)
 
     db.commit()
     db.refresh(prefs)

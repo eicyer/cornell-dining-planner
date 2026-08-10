@@ -10,7 +10,20 @@ import {
 } from '@expo-google-fonts/fraunces';
 import { Archivo_400Regular, Archivo_500Medium, Archivo_600SemiBold } from '@expo-google-fonts/archivo';
 import { IBMPlexMono_400Regular, IBMPlexMono_500Medium } from '@expo-google-fonts/ibm-plex-mono';
-import { EateryCrafted, EateryMenu, Me, Preferences, getCraftedMealsToday, getMe, getMenusToday, getPreferences, loginUrl, logout } from './api';
+import {
+  EateryCrafted,
+  EateryMenu,
+  Me,
+  Preferences,
+  getCraftedMealsToday,
+  getMe,
+  getMenusToday,
+  getPreferences,
+  getStationSurveyPairs,
+  loginUrl,
+  logout,
+  submitStationSurvey,
+} from './api';
 import PreferencesForm from './PreferencesForm';
 import FoodSurveyScreen from './FoodSurveyScreen';
 import CraftedMealsList from './CraftedMealsList';
@@ -26,7 +39,8 @@ type Screen =
   | { kind: 'foodSurvey' }
   | { kind: 'crafted'; eateries: EateryCrafted[] }
   | { kind: 'diary' }
-  | { kind: 'eateryDetail'; eatery: EateryMenu };
+  | { kind: 'eateryDetail'; eatery: EateryMenu }
+  | { kind: 'stationSurvey'; eatery: EateryMenu };
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>({ kind: 'loading' });
@@ -111,6 +125,10 @@ export default function App() {
     setScreen({ kind: 'foodSurvey' });
   }
 
+  function handleCompareStation(eatery: EateryMenu) {
+    setScreen({ kind: 'stationSurvey', eatery });
+  }
+
   async function handleLogout() {
     try {
       await logout();
@@ -193,8 +211,23 @@ export default function App() {
       <EateryDetailScreen
         eatery={screen.eatery}
         onBack={loadCraftedMeals}
+        onCompare={() => handleCompareStation(screen.eatery)}
         onLogged={() => setScreen({ kind: 'diary' })}
       />
+    );
+  }
+
+  if (screen.kind === 'stationSurvey') {
+    const eatery = screen.eatery;
+    return (
+      <View style={styles.surveyContainer}>
+        <FoodSurveyScreen
+          onDone={() => setScreen({ kind: 'eateryDetail', eatery })}
+          fetchPairs={() => getStationSurveyPairs(eatery.id)}
+          submitResponses={(responses) => submitStationSurvey(eatery.id, responses)}
+          kicker={`Compare · ${eatery.name}`}
+        />
+      </View>
     );
   }
 

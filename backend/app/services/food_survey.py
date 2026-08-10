@@ -185,14 +185,23 @@ class SurveyResponse:
     choice: Literal["a", "b", "skip"]
 
 
-def score_survey(responses: list[SurveyResponse]) -> tuple[list[str], list[str]]:
+def score_survey(
+    responses: list[SurveyResponse], pairs_by_id: dict[str, FoodSurveyPair] | None = None
+) -> tuple[list[str], list[str]]:
     """Net +1/-1 per tag per round (skip = no-op; unknown pair_id ignored).
     Returns (liked_tags, disliked_tags) for tags with net > 0 / net < 0;
     net == 0 is dropped as ambiguous. Pure function, no DB access.
+
+    `pairs_by_id` defaults to this module's hand-curated catalog; callers
+    with a different pair source (e.g. app.services.station_survey's
+    live-menu-derived pairs) pass their own so the same +1/-1 logic doesn't
+    need duplicating — the scoring rule only needs a pair's two items and
+    their tags, not where the pair came from.
     """
+    catalog = _ALL_PAIRS_BY_ID if pairs_by_id is None else pairs_by_id
     net: dict[str, int] = {}
     for r in responses:
-        pair = _ALL_PAIRS_BY_ID.get(r.pair_id)
+        pair = catalog.get(r.pair_id)
         if pair is None or r.choice == "skip":
             continue
         won, lost = (pair.item_a, pair.item_b) if r.choice == "a" else (pair.item_b, pair.item_a)

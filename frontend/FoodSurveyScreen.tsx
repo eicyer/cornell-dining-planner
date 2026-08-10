@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { FoodSurveyChoice, FoodSurveyPair, FoodSurveyResponse, getFoodSurveyPairs, submitFoodSurvey } from './api';
+import {
+  FoodSurveyChoice,
+  FoodSurveyPair,
+  FoodSurveyResponse,
+  Preferences,
+  getFoodSurveyPairs,
+  submitFoodSurvey,
+} from './api';
 import { colors, radius, space, type } from './theme';
 
 function Option({ label, onChoose }: { label: string; onChoose: () => void }) {
@@ -11,7 +18,21 @@ function Option({ label, onChoose }: { label: string; onChoose: () => void }) {
   );
 }
 
-export default function FoodSurveyScreen({ onDone }: { onDone: () => void }) {
+// Same pairwise "would you rather" UI drives both the onboarding Food
+// Preference Survey (default props) and the eatery-scoped Station Survey
+// (see docs/adr/0013) — the two only differ in where pairs come from and
+// where responses get submitted, so those are the only parameterized bits.
+export default function FoodSurveyScreen({
+  onDone,
+  fetchPairs = getFoodSurveyPairs,
+  submitResponses = submitFoodSurvey,
+  kicker = 'Taste Quiz',
+}: {
+  onDone: () => void;
+  fetchPairs?: () => Promise<FoodSurveyPair[]>;
+  submitResponses?: (responses: FoodSurveyResponse[]) => Promise<Preferences>;
+  kicker?: string;
+}) {
   const [pairs, setPairs] = useState<FoodSurveyPair[] | null>(null);
   const [round, setRound] = useState(0);
   const [responses, setResponses] = useState<FoodSurveyResponse[]>([]);
@@ -19,7 +40,7 @@ export default function FoodSurveyScreen({ onDone }: { onDone: () => void }) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getFoodSurveyPairs()
+    fetchPairs()
       .then((loaded) => {
         if (loaded.length === 0) {
           finish([]);
@@ -34,7 +55,7 @@ export default function FoodSurveyScreen({ onDone }: { onDone: () => void }) {
     setSubmitting(true);
     setError(null);
     try {
-      await submitFoodSurvey(finalResponses);
+      await submitResponses(finalResponses);
       onDone();
     } catch (err: any) {
       setError(err.message);
@@ -84,7 +105,7 @@ export default function FoodSurveyScreen({ onDone }: { onDone: () => void }) {
   return (
     <View style={styles.container}>
       <Text style={styles.kicker}>
-        Taste Quiz · Round {round + 1} of {pairs.length}
+        {kicker} · Round {round + 1} of {pairs.length}
       </Text>
       <View style={styles.progressBarTrack}>
         <View style={[styles.progressBarFill, { width: `${pct}%` }]} />

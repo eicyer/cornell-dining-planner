@@ -28,6 +28,10 @@ _Avoid_: Nutrition lookup, food match, portion (this is a density, not a serving
 A system-suggested combination of Menu Items from a single eatery/Menu Event, selected to fit a user's calorie/macro/preference targets.
 _Avoid_: Suggested meal, recommendation
 
+**Plate Role**:
+One of three roles (`protein`, `carb`, `vegetable`) a Menu Item is classified into for Crafted Meal candidate generation, derived from its own nutrition numbers (protein density, calorie density) and name — not its Menu Item category, which is a dining-hall station grouping and not a reliable stand-in for food role (a "Salad" station can list dressing, tofu, and rice side by side). A Crafted Meal candidate draws at most one item per role, sized off that role's benchmark portion range; items that aren't a real plate component (drinks, desserts, condiments) classify to no role and never enter candidate generation. See [[0012-plate-role-portioning]].
+_Avoid_: Category (the dining-feed station field — a different, unrelated concept)
+
 **Diet Tag**:
 An LLM-inferred label on a Menu Item (vegan, vegetarian, gluten-free, common allergens) derived from its name and eatery context, since the dining feed carries no dietary data itself. Cached alongside its Nutrition Match.
 _Avoid_: Dietary info, allergen data
@@ -42,6 +46,10 @@ _Avoid_: Preference (too broad — use this term only for the tie-breaking kind)
 
 **Food Preference Survey**:
 A 10-round pairwise "would you rather" onboarding step (see [[0011-food-preference-survey]]) that derives Soft Preference signal without requiring free-text input. Each round's winning item's tags get +1, the losing item's tags -1 (skip = no-op); tags with positive net become `liked_tags`, negative net become `disliked_tags` — merged into the same fields free-text parsing (`app.services.preference_parsing`) populates, deduped, never clobbered. Runs after diet restrictions/allergens are saved, so pairs containing an item the user can't eat are filtered out. Tracked per user via `UserPreference.food_survey_completed`; every user (new or existing) who hasn't completed it is prompted once, and can retake it anytime from the crafted-meals/diary header.
+_Avoid_: none
+
+**Station Survey**:
+A repeatable, eatery-scoped pairwise "would you rather" comparison (see [[0013-station-survey]]) — a live-menu counterpart to the Food Preference Survey above, not a replacement for it. Pairs are drawn from today's actual menu at one eatery's staple stations (Grill, Pizza, Chef's Table) rather than a hand-curated catalog, and score into the same `liked_tags`/`disliked_tags` fields via the same scoring rule. Unlike the Food Preference Survey, it's not gated by a completion flag and never runs during onboarding — reachable anytime from an eatery's detail view.
 _Avoid_: none
 
 **Activity Level**:
