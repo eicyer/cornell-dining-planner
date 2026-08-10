@@ -24,6 +24,9 @@
 .DS_Store
 *.pem
 
+# scripts/daily_refresh.sh output
+/logs
+
 # debug
 npm-debug.log*
 yarn-debug.log*

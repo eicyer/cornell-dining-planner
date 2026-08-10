@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
 
 import httpx
 from sqlalchemy.orm import Session
@@ -143,4 +144,12 @@ async def enrich() -> dict:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    asyncio.run(enrich())
+    result = asyncio.run(enrich())
+    # A partial failure rate is expected/tolerated (USDA's free tier is
+    # occasionally flaky, see README) and already falls back gracefully —
+    # but zero successes despite items needing enrichment means something
+    # systemic is broken (e.g. an expired/out-of-credit API key), which
+    # would otherwise exit 0 and run silently, invisible to cron, forever.
+    if result["failed"] > 0 and result["enriched"] == 0:
+        logging.error("All %d item(s) failed enrichment — check ANTHROPIC_API_KEY/USDA_API_KEY validity and credit balance.", result["failed"])
+        sys.exit(1)
