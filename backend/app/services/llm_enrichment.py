@@ -46,6 +46,8 @@ class EnrichmentResult:
     protein_g_per_100g: float
     carbs_g_per_100g: float
     fat_g_per_100g: float
+    sugar_g_per_100g: float
+    fiber_g_per_100g: float
     confidence: float
     source: str  # "usda" | "llm_estimate" — see app.db.models.NutritionSource
     diet_tags: list[str] = field(default_factory=list)
@@ -85,6 +87,8 @@ Respond with ONLY valid JSON, no markdown fences, no commentary:
   "protein_g_per_100g": <float>,
   "carbs_g_per_100g": <float>,
   "fat_g_per_100g": <float>,
+  "sugar_g_per_100g": <float, total sugars, as it would appear on a standard nutrition facts label>,
+  "fiber_g_per_100g": <float, total dietary fiber>,
   "confidence": <float 0-1, your confidence in these numbers>,
   "diet_tags": [<subset of {DIET_TAGS}>],
   "likely_allergens": [<subset of {ALLERGENS}>]
@@ -133,6 +137,8 @@ async def enrich_item(
                 protein_g_per_100g=usda_reference.protein_g,
                 carbs_g_per_100g=usda_reference.carbs_g,
                 fat_g_per_100g=usda_reference.fat_g,
+                sugar_g_per_100g=usda_reference.sugar_g,
+                fiber_g_per_100g=usda_reference.fiber_g,
                 confidence=_usda_confidence(usda_reference),
                 source="usda",
                 diet_tags=[t for t in data.get("diet_tags", []) if t in DIET_TAGS],
@@ -145,6 +151,8 @@ async def enrich_item(
             protein_g_per_100g=float(data["protein_g_per_100g"]),
             carbs_g_per_100g=float(data["carbs_g_per_100g"]),
             fat_g_per_100g=float(data["fat_g_per_100g"]),
+            sugar_g_per_100g=float(data.get("sugar_g_per_100g", 0.0)),
+            fiber_g_per_100g=float(data.get("fiber_g_per_100g", 0.0)),
             confidence=float(data["confidence"]),
             source="llm_estimate",
             diet_tags=[t for t in data.get("diet_tags", []) if t in DIET_TAGS],

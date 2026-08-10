@@ -1,7 +1,9 @@
 """Batch enrichment: USDA lookup + LLM nutrition/diet tagging for menu items
 that don't have cached results yet. Runs after the scrape job — see
 docs/adr/0002-enrichment-pipeline.md. Diff logic means this only ever pays
-USDA/LLM cost for genuinely new item names, not on every run.
+USDA/LLM cost for genuinely new item names, or an existing item name whose
+row predates a nutrition field added later (see docs/adr/0014) — not on
+every run regardless.
 
 Run manually with: python -m app.jobs.enrich_items
 """
@@ -34,14 +36,24 @@ CONCURRENCY = 5
 
 def find_unenriched_items(db: Session) -> list[tuple[str, str, str]]:
     """Distinct (item_name, category, eatery_name) for items with no cached
-    NutritionMatch yet. One representative category/eatery per item name.
+    NutritionMatch yet, plus items whose row exists but predates a nutrition
+    field added later (currently sugar/fiber — see docs/adr/0014) and so is
+    missing it. One representative category/eatery per item name.
 
     Customizable items (see app.services.customizable_items) never appear in
     the feed under their variant names, so a raw name notin_() filter against
     NutritionMatch would never see them as "already enriched." Instead, every
     raw name is expanded to its variant names first (a no-op for ordinary
     items) and the enriched check happens after expansion, in Python."""
-    enriched_names = {name for (name,) in db.query(NutritionMatch.item_name).all()}
+    fully_enriched_names = {
+        name
+        for (name,) in db.query(NutritionMatch.item_name)
+        .filter(
+            NutritionMatch.sugar_g_per_100g.isnot(None),
+            NutritionMatch.fiber_g_per_100g.isnot(None),
+        )
+        .all()
+    }
 
     rows = (
         db.query(MenuItem.name, MenuItem.category, Eatery.name)
@@ -54,7 +66,7 @@ def find_unenriched_items(db: Session) -> list[tuple[str, str, str]]:
     unenriched: list[tuple[str, str, str]] = []
     for name, category, eatery_name in rows:
         for variant in variant_names(name):
-            if variant not in enriched_names:
+            if variant not in fully_enriched_names:
                 unenriched.append((variant, category, eatery_name))
     return unenriched
 
@@ -88,6 +100,8 @@ def save_result(db: Session, item_name: str, result: EnrichmentResult) -> None:
     nutrition.protein_g_per_100g = result.protein_g_per_100g
     nutrition.carbs_g_per_100g = result.carbs_g_per_100g
     nutrition.fat_g_per_100g = result.fat_g_per_100g
+    nutrition.sugar_g_per_100g = result.sugar_g_per_100g
+    nutrition.fiber_g_per_100g = result.fiber_g_per_100g
     nutrition.confidence_score = result.confidence
 
     diet_tag = db.query(DietTag).filter(DietTag.item_name == item_name).one_or_none()

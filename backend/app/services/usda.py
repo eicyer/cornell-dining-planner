@@ -46,7 +46,16 @@ NUTRIENT_IDS = {
     "protein_g": 1003,
     "carbs_g": 1005,
     "fat_g": 1004,
+    "fiber_g": 1079,
 }
+
+# Total sugars moved to nutrient ID 2000 ("Sugars, total including NLEA") in
+# USDA's newer Survey/Foundation data; SR Legacy (the older fallback tier —
+# see DATA_TYPE_TIERS) still reports it under the legacy ID 1063 ("Sugars,
+# Total"). Tried in order rather than a single ID like the other nutrients
+# above, since which one a given match actually has depends on which tier
+# matched it.
+SUGAR_NUTRIENT_IDS = [2000, 1063]
 
 # Tried in order; Survey (FNDDS) is USDA's "as prepared/consumed" dish-level
 # data — the closest match to a dining hall item. Foundation/SR Legacy are
@@ -63,6 +72,15 @@ class UsdaMatch:
     protein_g: float
     carbs_g: float
     fat_g: float
+    sugar_g: float
+    fiber_g: float
+
+
+def _extract_sugar(nutrients: dict[int, float | None]) -> float:
+    for nutrient_id in SUGAR_NUTRIENT_IDS:
+        if nutrient_id in nutrients:
+            return nutrients[nutrient_id] or 0.0
+    return 0.0
 
 
 def _extract_match(food: dict) -> UsdaMatch | None:
@@ -78,6 +96,8 @@ def _extract_match(food: dict) -> UsdaMatch | None:
         protein_g=nutrients.get(NUTRIENT_IDS["protein_g"]) or 0.0,
         carbs_g=nutrients.get(NUTRIENT_IDS["carbs_g"]) or 0.0,
         fat_g=nutrients.get(NUTRIENT_IDS["fat_g"]) or 0.0,
+        sugar_g=_extract_sugar(nutrients),
+        fiber_g=nutrients.get(NUTRIENT_IDS["fiber_g"]) or 0.0,
     )
 
 

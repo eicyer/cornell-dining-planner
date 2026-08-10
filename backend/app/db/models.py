@@ -188,6 +188,12 @@ class NutritionMatch(Base):
     protein_g_per_100g: Mapped[float] = mapped_column(Float)
     carbs_g_per_100g: Mapped[float] = mapped_column(Float)
     fat_g_per_100g: Mapped[float] = mapped_column(Float)
+    # Nullable, unlike the four macros above: added after those were already
+    # populated for every existing item, so old rows start out without them
+    # — app.jobs.enrich_items backfills them the same way it enriches a
+    # brand-new item name. See docs/adr/0014-sugar-fiber-tracking.
+    sugar_g_per_100g: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fiber_g_per_100g: Mapped[float | None] = mapped_column(Float, nullable=True)
     confidence_score: Mapped[float] = mapped_column(Float, default=1.0)
 
     resolved_at: Mapped[datetime.datetime] = mapped_column(
