@@ -45,6 +45,16 @@ VEG_MAX_GRAMS = 220.0
 CARB_MIN_GRAMS = 100.0
 CARB_MAX_GRAMS = 250.0
 
+# Below this, even a floor-sized carb item (CARB_MIN_GRAMS) would overshoot
+# the carb target several times over — a very low carb target (e.g. a
+# keto-style macro split) can't be served by shrinking the role further,
+# since CARB_MIN_GRAMS is already a realistic serving floor, not a knob.
+# Dropping the carb role entirely fits a target this low far better than
+# including it ever could. No equivalent threshold for protein/vegetable:
+# their driving targets (protein_g, calories) aren't expected to run this
+# close to zero the way a deliberately carb-restricted target does.
+CARB_TARGET_SKIP_THRESHOLD_G = 15.0
+
 # Protein density (not calorie share) separates real protein sources from
 # everything else. Cooked grains/potatoes/vegetables all sit under ~3g
 # protein/100g, so this threshold is comfortably above that noise floor
@@ -310,6 +320,11 @@ def solve_portions(selected: list[ItemNutrition], target: Target) -> MealCandida
 
     by_role = {classify_role(i): i for i in flexible if classify_role(i) is not None}
 
+    carb_item = by_role.get("carb")
+    if carb_item is not None and remaining_target.carbs_g < CARB_TARGET_SKIP_THRESHOLD_G:
+        # See CARB_TARGET_SKIP_THRESHOLD_G.
+        carb_item = None
+
     # The other two roles still need at least their own floor portion after
     # the anchor is sized — reserving those floor-calories up front (rather
     # than bounding the anchor to the *entire* remaining budget) keeps a
@@ -317,7 +332,6 @@ def solve_portions(selected: list[ItemNutrition], target: Target) -> MealCandida
     # veg down to a floor that then overshoots on top of it anyway. See
     # docs/adr/0012 addendum.
     reserved_calories = 0.0
-    carb_item = by_role.get("carb")
     if carb_item is not None:
         reserved_calories += carb_item.calories_per_100g * CARB_MIN_GRAMS / 100
     veg_item = by_role.get("vegetable")
