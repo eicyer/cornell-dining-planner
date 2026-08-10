@@ -1,4 +1,4 @@
-"""Deterministic meal-crafting optimizer — see docs/adr/0003.
+"""Deterministic meal-crafting optimizer — see docs/adr/0003 and docs/adr/0012.
 
 Pure functions over plain data, no DB/ORM coupling, so the algorithm is
 directly testable. Hard Constraints (diet tags, allergens) are enforced
@@ -10,49 +10,87 @@ docs/adr/0007 — nothing here is a fixed "standard portion."
 Real dining-hall meals can rarely hit all four macro targets exactly with a
 handful of discrete items — this optimizes for closest fit within bounds,
 not an exact solve. That's a deliberate simplification, not a bug.
+
+Candidates are built from a benchmark plate model (protein + carb +
+vegetable, one item each) rather than "one item per dining-hall station" —
+see docs/adr/0012-plate-role-portioning.md for why: a station like "Salad"
+mixes dressing, tofu, and rice under one label, so station name is not a
+reliable stand-in for a food's role on a plate.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-import numpy as np
-from scipy.optimize import lsq_linear
-
 GRAMS_ROUNDING = 10.0
 
-# The item with the highest protein density in a candidate set is treated as
-# "the protein choice" (meat/fish/tofu/beans reliably out-protein sides like
-# rice or salad per 100g — see docs/adr/0003 addendum). It gets a dedicated,
-# realistic entree-sized portion computed directly from the protein target,
-# rather than being solved jointly with everything else — that joint solve
-# was squeezing dense protein items down toward the floor (e.g. 20g of beef)
+# The protein-bearing item in a candidate set gets a dedicated, realistic
+# entree-sized portion computed directly from the protein target, rather
+# than being solved jointly with everything else — a joint solve was
+# squeezing dense protein items down toward the floor (e.g. 20g of beef)
 # whenever a little of them already covered the macro target on paper.
 ANCHOR_MIN_GRAMS = 100.0
 ANCHOR_MAX_GRAMS = 280.0
 
-# Remaining (non-anchor) items share a narrower range than before so no side
-# ends up looking like a garnish (too little) or a mountain (too much) next
-# to the anchor — keeps portions across one meal in a plausible range of
-# each other instead of swinging from 20g to 400g.
-SIDE_MIN_GRAMS = 40.0
-SIDE_MAX_GRAMS = 250.0
+# Benchmark serving ranges for the other two plate roles — see
+# docs/adr/0012. Grounded in the hand-portion method (roughly a fist of
+# vegetables, 1-2 cupped hands of a starch/grain) rather than an arbitrary
+# "side" range, and kept distinct from each other because a calorie-dilute
+# vegetable and a calorie-dense starch shouldn't share one bound: forcing
+# both into the same 40-250g window is what let a solve size a vegetable
+# down to a garnish or a starch up to a mountain for a marginal macro-fit
+# gain.
+VEG_MIN_GRAMS = 80.0
+VEG_MAX_GRAMS = 220.0
+CARB_MIN_GRAMS = 100.0
+CARB_MAX_GRAMS = 250.0
 
-MAX_CATEGORIES = 5
-# Categories that don't meaningfully contribute to "a meal" and would
-# otherwise dilute candidate generation (a coffee isn't a meal component).
-NON_MEAL_CATEGORIES = {"beverages", "coffee bar", "condiments"}
+# Protein density (not calorie share) separates real protein sources from
+# everything else. Cooked grains/potatoes/vegetables all sit under ~3g
+# protein/100g, so this threshold is comfortably above that noise floor
+# without excluding fattier protein foods like tofu or salmon, which a
+# calorie-*share* split would misclassify as "fat" (tofu is ~55% fat
+# calories despite being a protein source) — see docs/adr/0012.
+PROTEIN_DENSITY_MIN = 8.0
 
-# Stations that aren't "the protein" even when their nutrition numbers look
-# protein-dense on paper (a mismatched USDA entry can make a yogurt/fruit
-# item read as higher-protein than the actual entree). Anchor selection is
-# restricted to real protein/entree stations so it never picks, say, a chia
-# pudding over the beef dish next to it.
-ANCHOR_EXCLUDED_CATEGORIES = {
-    "bagel bar/cereal", "beverage", "beverage bar", "beverages",
-    "dessert", "desserts", "fruit & yogurt bar", "salad", "soup",
-    "chef's table - sides",
+# Splits calorie-dilute "vegetable" items from calorie-dense "carb/starch"
+# items by density, since both can be carb-dominant by macro share alone
+# (a leafy green and a bowl of rice are both "mostly carbs" by ratio).
+# Non-starchy vegetables run ~15-45 kcal/100g; starchy vegetables and
+# cooked grains run ~70-140+ kcal/100g. 80 sits between the two bands.
+VEGETABLE_MAX_CALORIES_PER_100G = 80.0
+
+# Categories that are never a plate role regardless of nutrient profile —
+# desserts/fruit-yogurt/bagel items can read as "low calorie density" and
+# would otherwise slip into the vegetable role; beverages/coffee never
+# belong on the plate at all.
+EXCLUDED_ROLE_CATEGORIES = {
+    "beverages", "beverage", "beverage bar", "coffee bar", "condiments",
+    "dessert", "desserts", "fruit & yogurt bar", "bagel bar/cereal",
 }
+
+# Stations that aren't "the protein" even when a mismatched nutrition entry
+# makes their number look protein-dense on paper — a salad-bar or soup item
+# can read as high-protein from a bad USDA match (see docs/adr/0003
+# addendum) more easily than an actual entree can, since it isn't a
+# protein-heavy station to begin with. Restricting protein-role eligibility
+# to real entree/protein stations catches that; these categories can still
+# be picked for the carb/vegetable roles, just never protein.
+PROTEIN_ROLE_EXCLUDED_CATEGORIES = {"salad", "soup", "chef's table - sides"}
+
+# Name substrings for seasoning-scale items (dressings, sauces, spreads).
+# These can be calorie-dense or protein-adjacent enough to slip past the
+# category/density checks above, but a bounded solve has no way to tell a
+# 20g drizzle of dressing from a 200g vegetable apart from this — see
+# docs/adr/0012. Only ever excludes; a real entree that happens to contain
+# one of these words is a false negative we accept over the false positive
+# of sizing a condiment like a side.
+CONDIMENT_KEYWORDS = {
+    "dressing", "vinaigrette", "sauce", "syrup", "gravy", "dip", "topping",
+    "butter", "oil", "jam", "jelly", "cream cheese",
+}
+
+ROLE_ORDER = ("protein", "carb", "vegetable")
 
 
 @dataclass
@@ -126,37 +164,48 @@ def filter_items(items: list[ItemNutrition], constraints: HardConstraints) -> li
     return [i for i in items if passes_hard_constraints(i, constraints)]
 
 
-def group_by_category(items: list[ItemNutrition]) -> dict[str, list[ItemNutrition]]:
-    groups: dict[str, list[ItemNutrition]] = {}
+def classify_role(item: ItemNutrition) -> str | None:
+    """Which plate role (see docs/adr/0012) this item plays, or None if it
+    isn't a real plate component (drinks, desserts, condiments) — those are
+    excluded from candidate generation entirely rather than gram-solved
+    like a side."""
+    name_lower = item.name.lower()
+    if item.category.strip().lower() in EXCLUDED_ROLE_CATEGORIES:
+        return None
+    if any(keyword in name_lower for keyword in CONDIMENT_KEYWORDS):
+        return None
+    if (
+        item.protein_g_per_100g >= PROTEIN_DENSITY_MIN
+        and item.category.strip().lower() not in PROTEIN_ROLE_EXCLUDED_CATEGORIES
+    ):
+        return "protein"
+    if item.calories_per_100g < VEGETABLE_MAX_CALORIES_PER_100G:
+        return "vegetable"
+    return "carb"
+
+
+def group_by_role(items: list[ItemNutrition]) -> dict[str, list[ItemNutrition]]:
+    groups: dict[str, list[ItemNutrition]] = {role: [] for role in ROLE_ORDER}
     for item in items:
-        if item.category.strip().lower() in NON_MEAL_CATEGORIES:
-            continue
-        groups.setdefault(item.category, []).append(item)
-    return groups
+        role = classify_role(item)
+        if role is not None:
+            groups[role].append(item)
+    return {role: bucket for role, bucket in groups.items() if bucket}
 
 
 def generate_item_sets(groups: dict[str, list[ItemNutrition]], n_sets: int) -> list[list[ItemNutrition]]:
-    """n_sets deterministic, distinct combinations — one item per category,
-    rotating through each category's options so candidates differ."""
-    categories = list(groups.keys())[:MAX_CATEGORIES]
+    """n_sets deterministic, distinct combinations — at most one item per
+    available role (protein/carb/vegetable), rotating through each role's
+    options so candidates differ. A role missing from the eatery's current
+    offerings is simply skipped rather than forcing an unrelated
+    substitute into that slot."""
+    roles = [r for r in ROLE_ORDER if r in groups]
     sets = []
     for i in range(n_sets):
-        chosen = [groups[cat][i % len(groups[cat])] for cat in categories]
+        chosen = [groups[role][i % len(groups[role])] for role in roles]
         if chosen not in sets:
             sets.append(chosen)
     return sets
-
-
-def _pick_anchor(selected: list[ItemNutrition]) -> ItemNutrition | None:
-    """The item most representative of "the protein" in this set: highest
-    protein density, restricted to actual entree/protein stations."""
-    candidates = [
-        i for i in selected
-        if i.protein_g_per_100g > 0 and i.category.strip().lower() not in ANCHOR_EXCLUDED_CATEGORIES
-    ]
-    if not candidates:
-        return None
-    return max(candidates, key=lambda i: i.protein_g_per_100g)
 
 
 def _append_item(
@@ -178,45 +227,64 @@ def _append_item(
     totals["fat_g"] += fat_g
 
 
-def _normalized_row(values: list[float], target_value: float) -> list[float]:
-    # Guards against a macro the anchor already fully covered (remaining
-    # target 0) rather than requiring every macro to still be positive.
-    denom = target_value if target_value > 1e-6 else 1.0
-    return [v / denom for v in values]
-
-
-def _solve_bounded(
-    items: list[ItemNutrition], target: Target, min_grams: float, max_grams: float
-) -> list[tuple[ItemNutrition, float]]:
-    """Bounded least squares: minimize relative deviation from target across
-    all four macros simultaneously (normalizing by target so a calorie error
-    and a gram-of-protein error are weighted comparably), one unknown (grams,
-    bounded to a realistic serving range) per item."""
-    A = np.array(
-        [
-            _normalized_row([i.calories_per_100g for i in items], target.calories),
-            _normalized_row([i.protein_g_per_100g for i in items], target.protein_g),
-            _normalized_row([i.carbs_g_per_100g for i in items], target.carbs_g),
-            _normalized_row([i.fat_g_per_100g for i in items], target.fat_g),
-        ]
+def _reduce_target(target: Target, item: ItemNutrition, grams: float) -> Target:
+    return Target(
+        calories=max(target.calories - item.calories_per_100g * grams / 100, 0.0),
+        protein_g=max(target.protein_g - item.protein_g_per_100g * grams / 100, 0.0),
+        carbs_g=max(target.carbs_g - item.carbs_g_per_100g * grams / 100, 0.0),
+        fat_g=max(target.fat_g - item.fat_g_per_100g * grams / 100, 0.0),
     )
-    b = np.ones(4)
-    bounds = (min_grams / 100, max_grams / 100)
-    result = lsq_linear(A, b, bounds=bounds)
-    return [
-        (item, max(min_grams, round(x * 100 / GRAMS_ROUNDING) * GRAMS_ROUNDING))
-        for item, x in zip(items, result.x)
-    ]
+
+
+def _grams_for_remaining(
+    remaining_value: float,
+    density_per_100g: float,
+    min_grams: float,
+    max_grams: float,
+    calorie_bound: tuple[float, float] | None = None,
+) -> float:
+    """Solves grams directly from whatever's left of this role's driving
+    number (protein for protein, carbs for carb, calories for vegetable —
+    see docs/adr/0012), then clamps to a realistic serving range. A target
+    already covered by an earlier role (remaining ~0) clamps to the floor
+    rather than solving toward 0g; a very calorie-dilute item clamps to the
+    ceiling rather than ballooning to try to cover the remainder alone —
+    this clamp is what makes the portion adapt to the specific item's
+    calorie density instead of applying one fixed gram figure to every food
+    in a role.
+
+    `calorie_bound`, when given, is `(remaining_calories, calories_per_100g)`
+    for this same item: reaching the driving macro is still the goal, but
+    the solve is never allowed to use more grams than it'd take to burn
+    through the meal's whole remaining calorie budget on this item alone —
+    see docs/adr/0012 addendum. Without this, a calorie-dense item chasing
+    a still-unmet macro target (e.g. a fatty protein source short of the
+    protein target) could land on the macro while blowing well past the
+    meal's calorie target."""
+    if density_per_100g <= 0:
+        grams = max_grams
+    else:
+        grams = remaining_value / density_per_100g * 100
+    if calorie_bound is not None:
+        remaining_calories, calories_per_100g = calorie_bound
+        if calories_per_100g > 0:
+            grams = min(grams, remaining_calories / calories_per_100g * 100)
+    grams = min(max(grams, min_grams), max_grams)
+    return round(grams / GRAMS_ROUNDING) * GRAMS_ROUNDING
 
 
 def solve_portions(selected: list[ItemNutrition], target: Target) -> MealCandidate | None:
     """Fixed-serving items (whole-plate-only dishes) are always included at
-    their fixed weight first, never gram-solved. The remaining, flexible
-    items then anchor on their protein item (a dedicated, realistic
-    entree-sized portion sized off whatever's left of the protein target),
-    and solve the rest against whatever's left of the target after that. If
-    nothing in the set has any protein, every flexible item is solved jointly
-    against the side bounds instead — there's no anchor to speak of."""
+    their fixed weight first, never gram-solved. Each remaining, flexible
+    item is sized directly off whatever's left of its role's driving macro
+    after earlier roles have taken their share — protein anchors off the
+    protein target, carb off the carb target, vegetable off the calorie
+    target (vegetables aren't chosen to hit a specific macro) — bounded to
+    that role's benchmark serving range and, for protein/carb, to the
+    meal's remaining calorie budget at that item's own density, so a
+    calorie-dense item chasing its macro target can't do so by blowing
+    past the calorie target (see docs/adr/0012 addendum). A role with no
+    item in this candidate set is simply skipped."""
     if not selected:
         return None
     if target.calories <= 0 or target.protein_g <= 0 or target.carbs_g <= 0 or target.fat_g <= 0:
@@ -240,25 +308,48 @@ def solve_portions(selected: list[ItemNutrition], target: Target) -> MealCandida
             fat_g=max(target.fat_g - totals["fat_g"], 0.0),
         )
 
-    anchor = _pick_anchor(flexible)
-    others = [i for i in flexible if i is not anchor]
+    by_role = {classify_role(i): i for i in flexible if classify_role(i) is not None}
 
-    if anchor is not None:
-        grams_for_target = remaining_target.protein_g / anchor.protein_g_per_100g * 100
-        anchor_grams = min(max(grams_for_target, ANCHOR_MIN_GRAMS), ANCHOR_MAX_GRAMS)
-        anchor_grams = round(anchor_grams / GRAMS_ROUNDING) * GRAMS_ROUNDING
-        _append_item(items, totals, anchor, anchor_grams)
+    # The other two roles still need at least their own floor portion after
+    # the anchor is sized — reserving those floor-calories up front (rather
+    # than bounding the anchor to the *entire* remaining budget) keeps a
+    # calorie-dense anchor from consuming the whole meal and forcing carb/
+    # veg down to a floor that then overshoots on top of it anyway. See
+    # docs/adr/0012 addendum.
+    reserved_calories = 0.0
+    carb_item = by_role.get("carb")
+    if carb_item is not None:
+        reserved_calories += carb_item.calories_per_100g * CARB_MIN_GRAMS / 100
+    veg_item = by_role.get("vegetable")
+    if veg_item is not None:
+        reserved_calories += veg_item.calories_per_100g * VEG_MIN_GRAMS / 100
 
-        remaining_target = Target(
-            calories=max(remaining_target.calories - anchor.calories_per_100g * anchor_grams / 100, 0.0),
-            protein_g=max(remaining_target.protein_g - anchor.protein_g_per_100g * anchor_grams / 100, 0.0),
-            carbs_g=max(remaining_target.carbs_g - anchor.carbs_g_per_100g * anchor_grams / 100, 0.0),
-            fat_g=max(remaining_target.fat_g - anchor.fat_g_per_100g * anchor_grams / 100, 0.0),
+    protein_item = by_role.get("protein")
+    if protein_item is not None:
+        protein_calorie_budget = max(remaining_target.calories - reserved_calories, 0.0)
+        grams = _grams_for_remaining(
+            remaining_target.protein_g, protein_item.protein_g_per_100g, ANCHOR_MIN_GRAMS, ANCHOR_MAX_GRAMS,
+            calorie_bound=(protein_calorie_budget, protein_item.calories_per_100g),
         )
+        _append_item(items, totals, protein_item, grams)
+        remaining_target = _reduce_target(remaining_target, protein_item, grams)
 
-    if others:
-        for item, grams in _solve_bounded(others, remaining_target, SIDE_MIN_GRAMS, SIDE_MAX_GRAMS):
-            _append_item(items, totals, item, grams)
+    if carb_item is not None:
+        veg_reserved_calories = veg_item.calories_per_100g * VEG_MIN_GRAMS / 100 if veg_item is not None else 0.0
+        carb_calorie_budget = max(remaining_target.calories - veg_reserved_calories, 0.0)
+        grams = _grams_for_remaining(
+            remaining_target.carbs_g, carb_item.carbs_g_per_100g, CARB_MIN_GRAMS, CARB_MAX_GRAMS,
+            calorie_bound=(carb_calorie_budget, carb_item.calories_per_100g),
+        )
+        _append_item(items, totals, carb_item, grams)
+        remaining_target = _reduce_target(remaining_target, carb_item, grams)
+
+    if veg_item is not None:
+        grams = _grams_for_remaining(
+            remaining_target.calories, veg_item.calories_per_100g, VEG_MIN_GRAMS, VEG_MAX_GRAMS
+        )
+        _append_item(items, totals, veg_item, grams)
+        remaining_target = _reduce_target(remaining_target, veg_item, grams)
 
     return MealCandidate(items=items, totals=totals)
 
@@ -267,7 +358,7 @@ def generate_candidates(
     items: list[ItemNutrition], target: Target, constraints: HardConstraints, n_candidates: int = 3
 ) -> list[MealCandidate]:
     eligible = filter_items(items, constraints)
-    groups = group_by_category(eligible)
+    groups = group_by_role(eligible)
     if not groups:
         return []
 
