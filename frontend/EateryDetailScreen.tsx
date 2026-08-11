@@ -1,8 +1,14 @@
-import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { EateryMenu, LoggedMeal, logMeal } from './api';
+import { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { EateryCraftedOptions, EateryMenu, LoggedMeal, Totals, getCraftedMealsForEatery, logMeal } from './api';
+import Button from './components/Button';
+import CraftedMealCard, { LogStatus } from './components/CraftedMealCard';
+import ListRow from './components/ListRow';
+import ProgressBar from './components/ProgressBar';
+import Tab from './components/Tab';
 import { describePortion } from './foodDensity';
-import { colors, radius, space, type } from './theme';
+import { success } from './haptics';
+import { colors, radius, space, touchTarget, type } from './theme';
 
 // Mirrors app/services/station_survey.py's STAPLE_STATIONS — keep in sync
 // manually (no shared schema, same precedent as DIET_TAGS/ALLERGENS in
@@ -20,12 +26,12 @@ function hasStapleStation(eatery: EateryMenu): boolean {
 
 export default function EateryDetailScreen({
   eatery,
-  onBack,
+  perMealTarget,
   onCompare,
   onLogged,
 }: {
   eatery: EateryMenu;
-  onBack: () => void;
+  perMealTarget: Totals | null;
   onCompare: () => void;
   onLogged: (meal: LoggedMeal) => void;
 }) {
@@ -33,6 +39,46 @@ export default function EateryDetailScreen({
   const [grams, setGrams] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The full raw menu (manual "add an item not in the suggestions" builder)
+  // stays collapsed behind an explicit tap — the suggested meal options
+  // above already cover the common case, so this shouldn't compete with
+  // them for scroll attention by default.
+  const [showFullMenu, setShowFullMenu] = useState(false);
+
+  const [options, setOptions] = useState<EateryCraftedOptions | null>(null);
+  const [optionsError, setOptionsError] = useState<string | null>(null);
+  const [optionLogStatus, setOptionLogStatus] = useState<Record<number, LogStatus>>({});
+
+  // Loaded separately from `eatery` (which only has the raw menu) — see the
+  // "3 meal options" eatery-detail flow. Distinct request from the
+  // today-list's single pick, so a lower-ranked option can be offered here
+  // even though it wouldn't have been the today-list's choice.
+  useEffect(() => {
+    let cancelled = false;
+    getCraftedMealsForEatery(eatery.id)
+      .then((data) => {
+        if (!cancelled) setOptions(data);
+      })
+      .catch((err: any) => {
+        if (!cancelled) setOptionsError(err.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [eatery.id]);
+
+  async function handleLogOption(index: number, items: { name: string; grams: number }[]) {
+    if (!options || !options.meal_period) return;
+    setOptionLogStatus((s) => ({ ...s, [index]: 'saving' }));
+    try {
+      const logged = await logMeal(eatery.id, options.meal_period, items);
+      setOptionLogStatus((s) => ({ ...s, [index]: 'done' }));
+      success();
+      onLogged(logged);
+    } catch {
+      setOptionLogStatus((s) => ({ ...s, [index]: 'error' }));
+    }
+  }
 
   const event = eatery.menu_events[eventIndex];
 
@@ -64,6 +110,7 @@ export default function EateryDetailScreen({
         .filter(([, g]) => g > 0)
         .map(([name, g]) => ({ name, grams: g }));
       const meal = await logMeal(eatery.id, event.meal_period, items);
+      success();
       onLogged(meal);
     } catch (err: any) {
       setError(err.message);
@@ -76,9 +123,6 @@ export default function EateryDetailScreen({
     return (
       <View style={styles.center}>
         <Text style={type.body}>Closed today</Text>
-        <Pressable onPress={onBack} style={styles.backButton}>
-          <Text style={styles.backButtonText}>Back</Text>
-        </Pressable>
       </View>
     );
   }
@@ -86,102 +130,151 @@ export default function EateryDetailScreen({
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Pressable onPress={onBack}>
-          <Text style={styles.back}>{'← Back'}</Text>
-        </Pressable>
         <Text style={styles.title}>{eatery.name}</Text>
 
         {hasStapleStation(eatery) && (
-          <Pressable onPress={onCompare} style={styles.compareLink}>
+          <Pressable onPress={onCompare} style={styles.compareLink} hitSlop={6}>
             <Text style={styles.compareLinkText}>Compare today's picks →</Text>
           </Pressable>
         )}
 
-        {eatery.menu_events.length > 1 && (
-          <View style={styles.tabs}>
-            {eatery.menu_events.map((e, i) => (
-              <Pressable key={e.meal_period} onPress={() => setEventIndex(i)} style={[styles.tab, i === eventIndex && styles.tabActive]}>
-                <Text style={[styles.tabText, i === eventIndex && styles.tabTextActive]}>{e.meal_period}</Text>
-              </Pressable>
+        {!options && !optionsError && (
+          <View style={styles.optionsLoading}>
+            <ActivityIndicator color={colors.accent} />
+          </View>
+        )}
+
+        {optionsError && <Text style={styles.optionsError}>Couldn't load meal options: {optionsError}</Text>}
+
+        {options && options.crafted_meals.length === 0 && (
+          <Text style={styles.unavailable}>{options.reason_unavailable ?? 'No meal options available today'}</Text>
+        )}
+
+        {options && options.crafted_meals.length > 0 && (
+          <View style={styles.options}>
+            <Text style={styles.sectionTitle}>Meal options</Text>
+            {options.crafted_meals.map((meal, i) => (
+              <View key={i} style={styles.optionCard}>
+                <CraftedMealCard
+                  meal={meal}
+                  mealPeriod={options.meal_period ?? ''}
+                  perMealTarget={perMealTarget}
+                  status={optionLogStatus[i] ?? 'idle'}
+                  onLog={(items) => handleLogOption(i, items)}
+                />
+              </View>
             ))}
           </View>
         )}
 
-        {event.categories.map((category) => (
-          <View key={category.category} style={styles.category}>
-            <Text style={styles.categoryTitle}>{category.category}</Text>
-            {category.items.map((item) => {
-              const enteredGrams = grams[item.name] ?? 0;
-              const portion = enteredGrams > 0 ? describePortion({ name: item.name, grams: enteredGrams }) : '';
-              return (
-                <View key={item.name} style={styles.itemRow}>
-                  <View style={styles.itemInfo}>
-                    <Text style={styles.itemName}>{item.name}</Text>
-                    <Text style={styles.itemCalories}>
-                      {item.nutrition ? `${Math.round(item.nutrition.calories_per_100g)} cal/100g` : 'no nutrition data'}
-                      {portion ? ` · ${portion}` : ''}
-                    </Text>
-                  </View>
-                  <TextInput
-                    style={styles.gramsInput}
-                    keyboardType="numeric"
-                    placeholder="0g"
-                    placeholderTextColor={colors.inkTertiary}
-                    value={grams[item.name] ? String(grams[item.name]) : ''}
-                    editable={!!item.nutrition}
-                    onChangeText={(text) =>
-                      setGrams({ ...grams, [item.name]: Number(text.replace(/[^0-9]/g, '')) || 0 })
-                    }
-                  />
-                </View>
-              );
-            })}
-          </View>
-        ))}
+        {!showFullMenu && (
+          <Button
+            label="+ Add another item"
+            variant="outline"
+            onPress={() => setShowFullMenu(true)}
+            style={styles.addMoreButton}
+          />
+        )}
+
+        {showFullMenu && (
+          <>
+            {eatery.menu_events.length > 1 && (
+              <View style={styles.tabs}>
+                {eatery.menu_events.map((e, i) => (
+                  <Tab key={e.meal_period} label={e.meal_period} active={i === eventIndex} onPress={() => setEventIndex(i)} />
+                ))}
+              </View>
+            )}
+
+            {event.categories.map((category) => (
+              <View key={category.category} style={styles.category}>
+                <Text style={styles.categoryTitle}>{category.category}</Text>
+                {category.items.map((item) => {
+                  const enteredGrams = grams[item.name] ?? 0;
+                  const portion = enteredGrams > 0 ? describePortion({ name: item.name, grams: enteredGrams }) : '';
+                  return (
+                    <ListRow key={item.name}>
+                      <View style={styles.itemInfo}>
+                        <Text style={styles.itemName}>{item.name}</Text>
+                        <Text style={styles.itemCalories}>
+                          {item.nutrition ? `${Math.round(item.nutrition.calories_per_100g)} cal/100g` : 'no nutrition data'}
+                          {portion ? ` · ${portion}` : ''}
+                          {item.nutrition?.source === 'llm_estimate' ? ' · estimated' : ''}
+                        </Text>
+                      </View>
+                      <TextInput
+                        style={styles.gramsInput}
+                        keyboardType="numeric"
+                        placeholder="0g"
+                        placeholderTextColor={colors.inkTertiary}
+                        value={grams[item.name] ? String(grams[item.name]) : ''}
+                        editable={!!item.nutrition}
+                        onChangeText={(text) =>
+                          setGrams({ ...grams, [item.name]: Number(text.replace(/[^0-9]/g, '')) || 0 })
+                        }
+                      />
+                    </ListRow>
+                  );
+                })}
+              </View>
+            ))}
+          </>
+        )}
       </ScrollView>
 
-      <View style={styles.tray}>
-        {error && <Text style={styles.error}>{error}</Text>}
-        <Text style={styles.trayText}>
-          {itemCount} item{itemCount === 1 ? '' : 's'} · {Math.round(totals.calories)} cal ·{' '}
-          {Math.round(totals.protein_g)}g protein
-        </Text>
-        <Pressable style={[styles.logButton, itemCount === 0 && styles.logButtonDisabled]} onPress={handleLog} disabled={itemCount === 0 || saving}>
-          <Text style={styles.logButtonText}>{saving ? 'Logging…' : 'Log Meal →'}</Text>
-        </Pressable>
-      </View>
+      {showFullMenu && (
+        <View style={styles.tray}>
+          {error && <Text style={styles.error}>{error}</Text>}
+          {perMealTarget && itemCount > 0 && (
+            <ProgressBar label="This meal" value={totals.calories} goal={perMealTarget.calories} unit=" cal" />
+          )}
+          <Text style={styles.trayText}>
+            {itemCount} item{itemCount === 1 ? '' : 's'} · {Math.round(totals.calories)} cal ·{' '}
+            {Math.round(totals.protein_g)}g protein
+          </Text>
+          <Button label={saving ? 'Logging…' : 'Log Meal →'} onPress={handleLog} disabled={itemCount === 0 || saving} />
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.paper },
-  content: { padding: 16, paddingTop: 56, paddingBottom: 24, maxWidth: 640, width: '100%', alignSelf: 'center' },
+  content: { padding: 16, paddingBottom: 24, maxWidth: 640, width: '100%', alignSelf: 'center' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.paper },
-  back: { ...type.body, fontSize: 13, color: colors.inkSecondary, marginBottom: space.sm },
-  backButton: { marginTop: space.lg, padding: space.md },
-  backButtonText: { ...type.body, color: colors.accent, fontFamily: 'Archivo_600SemiBold' },
   title: { fontFamily: 'Fraunces_700Bold', fontSize: 30, lineHeight: 36, color: colors.ink, marginBottom: space.sm },
-  compareLink: { marginBottom: space.lg, alignSelf: 'flex-start' },
+  compareLink: { marginBottom: space.lg, alignSelf: 'flex-start', paddingVertical: space.sm },
   compareLinkText: { ...type.kicker, color: colors.accent },
+  optionsLoading: { paddingVertical: space.xl, alignItems: 'center' },
+  optionsError: { ...type.body, color: colors.accent, marginBottom: space.lg },
+  unavailable: {
+    fontFamily: 'Fraunces_500Medium_Italic',
+    fontSize: 15,
+    color: colors.inkSecondary,
+    marginBottom: space.lg,
+  },
+  options: { marginBottom: space.md },
+  sectionTitle: {
+    ...type.kicker,
+    marginBottom: space.md,
+    paddingBottom: space.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.hairline,
+  },
+  optionCard: {
+    marginBottom: space.xl,
+    paddingBottom: space.xl,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.hairline,
+  },
+  addMoreButton: { marginBottom: space.xl },
   tabs: { flexDirection: 'row', marginBottom: space.xl, gap: space.lg },
-  tab: { paddingVertical: space.xs, borderBottomWidth: 2, borderBottomColor: 'transparent' },
-  tabActive: { borderBottomColor: colors.accent },
-  tabText: { ...type.kicker },
-  tabTextActive: { color: colors.ink },
   category: { marginBottom: space.xl },
   categoryTitle: {
     ...type.kicker,
     marginBottom: space.sm,
     paddingBottom: space.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.hairline,
-  },
-  itemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: space.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.hairline,
   },
@@ -193,6 +286,11 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.ink,
     borderRadius: radius.none,
     width: 56,
+    // Width stays fixed (numeric entry doesn't need to grow), but the
+    // original paddingVertical(4) rendered well under the 44pt minimum —
+    // minHeight is a direct backstop rather than tuning padding against an
+    // uncertain TextInput line-height. See Phase 6 audit.
+    minHeight: touchTarget.min,
     textAlign: 'center',
     paddingVertical: space.xs,
     fontFamily: 'IBMPlexMono_400Regular',
@@ -202,7 +300,4 @@ const styles = StyleSheet.create({
   tray: { borderTopWidth: 1, borderTopColor: colors.hairline, padding: space.lg, backgroundColor: colors.paper },
   trayText: { ...type.monoEmphasis, marginBottom: space.sm, textAlign: 'center' },
   error: { ...type.body, color: colors.accent, marginBottom: space.sm, textAlign: 'center' },
-  logButton: { backgroundColor: colors.accent, borderRadius: radius.none, paddingVertical: 14, alignItems: 'center' },
-  logButtonDisabled: { backgroundColor: colors.disabled },
-  logButtonText: { ...type.button },
 });

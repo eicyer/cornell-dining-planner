@@ -151,6 +151,12 @@ class CraftedItem:
     fat_g: float
     sugar_g: float
     fiber_g: float
+    # Plate role (see docs/adr/0012) this item was selected to fill —
+    # "protein" / "carb" / "vegetable", or None for a fixed-serving
+    # whole-plate item that classify_role() doesn't resolve to one of the
+    # three. Lets the frontend group a crafted meal by role instead of
+    # rendering a flat item list.
+    role: str | None
 
 
 @dataclass
@@ -228,7 +234,8 @@ def generate_item_sets(groups: dict[str, list[ItemNutrition]], n_sets: int) -> l
 
 
 def _append_item(
-    items: list[CraftedItem], totals: dict[str, float], item: ItemNutrition, grams: float
+    items: list[CraftedItem], totals: dict[str, float], item: ItemNutrition, grams: float,
+    role: str | None = None,
 ) -> None:
     calories = item.calories_per_100g * grams / 100
     protein_g = item.protein_g_per_100g * grams / 100
@@ -240,7 +247,7 @@ def _append_item(
         CraftedItem(
             name=item.name, category=item.category, grams=grams,
             calories=calories, protein_g=protein_g, carbs_g=carbs_g, fat_g=fat_g,
-            sugar_g=sugar_g, fiber_g=fiber_g,
+            sugar_g=sugar_g, fiber_g=fiber_g, role=role,
         )
     )
     totals["calories"] += calories
@@ -322,7 +329,7 @@ def solve_portions(selected: list[ItemNutrition], target: Target) -> MealCandida
     remaining_target = target
 
     for item in fixed:
-        _append_item(items, totals, item, item.fixed_serving_grams)
+        _append_item(items, totals, item, item.fixed_serving_grams, classify_role(item))
 
     if fixed:
         remaining_target = Target(
@@ -359,7 +366,7 @@ def solve_portions(selected: list[ItemNutrition], target: Target) -> MealCandida
             remaining_target.protein_g, protein_item.protein_g_per_100g, ANCHOR_MIN_GRAMS, ANCHOR_MAX_GRAMS,
             calorie_bound=(protein_calorie_budget, protein_item.calories_per_100g),
         )
-        _append_item(items, totals, protein_item, grams)
+        _append_item(items, totals, protein_item, grams, "protein")
         remaining_target = _reduce_target(remaining_target, protein_item, grams)
 
     if carb_item is not None:
@@ -369,14 +376,14 @@ def solve_portions(selected: list[ItemNutrition], target: Target) -> MealCandida
             remaining_target.carbs_g, carb_item.carbs_g_per_100g, CARB_MIN_GRAMS, CARB_MAX_GRAMS,
             calorie_bound=(carb_calorie_budget, carb_item.calories_per_100g),
         )
-        _append_item(items, totals, carb_item, grams)
+        _append_item(items, totals, carb_item, grams, "carb")
         remaining_target = _reduce_target(remaining_target, carb_item, grams)
 
     if veg_item is not None:
         grams = _grams_for_remaining(
             remaining_target.calories, veg_item.calories_per_100g, VEG_MIN_GRAMS, VEG_MAX_GRAMS
         )
-        _append_item(items, totals, veg_item, grams)
+        _append_item(items, totals, veg_item, grams, "vegetable")
         remaining_target = _reduce_target(remaining_target, veg_item, grams)
 
     return MealCandidate(items=items, totals=totals)

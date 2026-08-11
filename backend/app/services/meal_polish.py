@@ -97,3 +97,68 @@ async def polish_meal(
     except Exception:
         logger.exception("Meal polish failed, falling back to first candidate")
         return PolishedMeal(candidate_index=0, name="Today's Meal", rationale="")
+
+
+def _build_multi_prompt(
+    candidates: list[MealCandidate], target: Target, liked_tags: list[str], disliked_tags: list[str]
+) -> str:
+    candidates_block = "\n".join(_describe_candidate(i, c) for i, c in enumerate(candidates))
+    return f"""You are naming meal options for a college student at a dining hall, from
+candidates that already satisfy their dietary restrictions and are close to their macro
+targets. Name and describe EVERY candidate below — do not change the items or amounts,
+and do not drop or reorder any candidate.
+
+Target: {target.calories:.0f} cal, {target.protein_g:.0f}g protein, {target.carbs_g:.0f}g carbs, {target.fat_g:.0f}g fat
+Liked foods: {liked_tags or "none stated"}
+Disliked foods: {disliked_tags or "none stated"}
+
+{candidates_block}
+
+Respond with ONLY valid JSON, no markdown fences, no commentary — one entry per
+candidate above, in the same order:
+{{
+  "meals": [
+    {{"name": <short appealing meal name, e.g. "Grilled Chicken & Rice Bowl">,
+      "rationale": <one sentence on why this fits their goals/preferences>}},
+    ...
+  ]
+}}"""
+
+
+async def polish_meals(
+    client: AsyncAnthropic,
+    candidates: list[MealCandidate],
+    target: Target,
+    liked_tags: list[str],
+    disliked_tags: list[str],
+) -> list[PolishedMeal]:
+    """Names every candidate (rather than picking one, like polish_meal) so
+    callers can present all of them as options — see the eatery-detail "3
+    meal options" flow. Order mirrors `candidates`; on any failure every
+    candidate still gets a generic name rather than the whole list dropping
+    out, per this module's fall-back-don't-drop contract."""
+    if not candidates:
+        return []
+
+    def _fallback() -> list[PolishedMeal]:
+        return [PolishedMeal(candidate_index=i, name=f"Option {i + 1}", rationale="") for i in range(len(candidates))]
+
+    try:
+        response = await client.messages.create(
+            model=MODEL,
+            max_tokens=200 * len(candidates),
+            messages=[{"role": "user", "content": _build_multi_prompt(candidates, target, liked_tags, disliked_tags)}],
+        )
+        text = "".join(block.text for block in response.content if block.type == "text")
+        data = _extract_json(text)
+        meals = data["meals"]
+        if len(meals) != len(candidates):
+            raise ValueError(f"expected {len(candidates)} meals, got {len(meals)}")
+
+        return [
+            PolishedMeal(candidate_index=i, name=str(m["name"]), rationale=str(m["rationale"]))
+            for i, m in enumerate(meals)
+        ]
+    except Exception:
+        logger.exception("Meal polish (multi) failed, falling back to generic names")
+        return _fallback()

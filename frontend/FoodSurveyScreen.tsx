@@ -8,7 +8,9 @@ import {
   getFoodSurveyPairs,
   submitFoodSurvey,
 } from './api';
-import { colors, radius, space, type } from './theme';
+import { BarTrack } from './components/ProgressBar';
+import { selection } from './haptics';
+import { colors, space, type } from './theme';
 
 function Option({ label, onChoose }: { label: string; onChoose: () => void }) {
   return (
@@ -65,6 +67,7 @@ export default function FoodSurveyScreen({
 
   function choose(choice: FoodSurveyChoice) {
     if (!pairs) return;
+    selection();
     const next = [...responses, { pair_id: pairs[round].id, choice }];
     setResponses(next);
     if (round + 1 < pairs.length) {
@@ -107,8 +110,8 @@ export default function FoodSurveyScreen({
       <Text style={styles.kicker}>
         {kicker} · Round {round + 1} of {pairs.length}
       </Text>
-      <View style={styles.progressBarTrack}>
-        <View style={[styles.progressBarFill, { width: `${pct}%` }]} />
+      <View style={styles.progressBarWrap}>
+        <BarTrack pct={pct} />
       </View>
 
       <Text style={styles.title}>Which would you rather eat right now?</Text>
@@ -118,7 +121,7 @@ export default function FoodSurveyScreen({
       <Text style={styles.orLabel}>or</Text>
       <Option key={`${pair.id}-b`} label={pair.item_b.name} onChoose={() => choose('b')} />
 
-      <Pressable onPress={() => choose('skip')} style={styles.skipRow}>
+      <Pressable onPress={() => choose('skip')} style={styles.skipRow} hitSlop={6}>
         <Text style={styles.skipLink}>Skip — no preference</Text>
       </Pressable>
     </View>
@@ -134,14 +137,7 @@ const styles = StyleSheet.create({
   },
   container: { paddingBottom: space.xxxl },
   kicker: { ...type.kicker, marginBottom: space.sm },
-  progressBarTrack: {
-    height: 4,
-    borderRadius: radius.none,
-    backgroundColor: colors.disabled,
-    overflow: 'hidden',
-    marginBottom: space.xl,
-  },
-  progressBarFill: { height: 4, backgroundColor: colors.accent },
+  progressBarWrap: { marginBottom: space.xl },
   title: {
     fontFamily: 'Fraunces_700Bold',
     fontSize: 26,
@@ -169,7 +165,7 @@ const styles = StyleSheet.create({
     color: colors.inkTertiary,
     marginVertical: space.sm,
   },
-  skipRow: { marginTop: space.xl, alignSelf: 'flex-start' },
+  skipRow: { marginTop: space.xl, alignSelf: 'flex-start', paddingVertical: space.sm },
   skipLink: { ...type.kicker, color: colors.inkTertiary },
   submittingText: {
     fontFamily: 'Fraunces_500Medium_Italic',

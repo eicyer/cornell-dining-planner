@@ -171,6 +171,10 @@ export async function submitStationSurvey(eateryId: number, responses: FoodSurve
   return res.json();
 }
 
+// Mirrors app.services.meal_crafting.ROLE_ORDER.
+export const PLATE_ROLE_ORDER = ['protein', 'carb', 'vegetable'] as const;
+export type PlateRole = (typeof PLATE_ROLE_ORDER)[number];
+
 export type CraftedItem = {
   name: string;
   category: string;
@@ -181,6 +185,7 @@ export type CraftedItem = {
   fat_g: number;
   sugar_g: number;
   fiber_g: number;
+  role: PlateRole | null;
 };
 
 export type CraftedMeal = {
@@ -202,6 +207,25 @@ export type EateryCrafted = {
 export async function getCraftedMealsToday(): Promise<EateryCrafted[]> {
   const res = await apiFetch('/menus/today/crafted');
   if (!res.ok) throw new Error(`GET /menus/today/crafted failed: ${res.status}`);
+  return res.json();
+}
+
+// Up to a few ranked meal options for one eatery — see the eatery-detail
+// "3 meal options" flow. Unlike EateryCrafted.crafted_meal (the single
+// today-list pick), crafted_meals here can include lower-ranked candidates
+// so the user has choices, even at some cost to average suggestion quality.
+export type EateryCraftedOptions = {
+  id: number;
+  name: string;
+  campus_area: string | null;
+  meal_period: string | null;
+  crafted_meals: CraftedMeal[];
+  reason_unavailable: string | null;
+};
+
+export async function getCraftedMealsForEatery(eateryId: number): Promise<EateryCraftedOptions> {
+  const res = await apiFetch(`/menus/today/crafted/${eateryId}`);
+  if (!res.ok) throw new Error(`GET /menus/today/crafted/${eateryId} failed: ${res.status}`);
   return res.json();
 }
 

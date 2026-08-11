@@ -99,6 +99,39 @@ We tried a plate-shaped chart (pie/donut, then a density-corrected version, then
 
 `App.tsx` loads Fraunces (500, 500 Italic, 600, 600 Italic, 700), Archivo (400, 500, 600), and IBM Plex Mono (400, 500) via `expo-font`'s `useFonts` hook before rendering any screen, reusing the app's existing loading-state `ActivityIndicator` as the gate (no separate splash-screen setup — this app is tested via `expo start --web` and has no splash config today).
 
+## Interaction layer (`theme.ts` → `motion` / `iconSize` / `touchTarget` / `interaction`)
+
+Added for the mobile interactivity pass: native navigation transitions, a small icon set, and data visualization. These are additive — none of the rules above change.
+
+| Token | Values | Usage |
+|---|---|---|
+| `motion` | `fast 150, base 250, slow 400` (ms) | In-page animation only — a `ProgressBar`/`ProgressRing` fill animating to a new value on load. Screen-to-screen transitions are React Navigation native-stack's platform-native push/pop and don't use these. |
+| `iconSize` | `sm 16, md 20, lg 24` | Every `Icon` usage. No icon is ever sized ad hoc per screen. |
+| `touchTarget` | `min 44` | Minimum rendered size (or `hitSlop`) for every tappable element, enforced inside the shared `Button`/`Chip`/`Tab` components in `frontend/components/`. |
+| `interaction` | `pressedOpacity 0.6` | The one press-feedback mechanism app-wide, generalizing the border-color swap `FoodSurveyScreen.tsx`'s `optionPressed` already used. |
+
+### Icons
+
+A minimal set (`lucide-react-native`, wrapped by `components/Icon.tsx`) is used sparingly:
+
+**Always import icons via their subpath** — `import ThumbsUp from 'lucide-react-native/icons/thumbs-up'` (default export, kebab-case filename) — never `import { ThumbsUp } from 'lucide-react-native'`. The barrel entry re-exports all ~1,800 icons from one module; Metro's dev bundler pulled in the entire icon set for a 3.5MB bundle-size regression from importing just three icons that way. The subpath form is a real, tree-shakeable module per icon.
+
+- Color is always `ink`, `accent`, or `inkSecondary` — never a fourth hue, never on a filled/colored chip or circle background. An icon sitting in a pale rounded-square background, repeated per row, is exactly the generic "AI app" pattern this system exists to avoid.
+- Reserved for stand-alone navigational glyphs (the back chevron replacing the old `← Back` text link) and a few specific data affordances (meal rating, nutrition-confidence marker). Arrows embedded in button copy (`Log this meal →`, `Sign in with Google →`) stay as text — turning every button into icon+text risks clutter the approved target mock never had.
+- Never used as a repeated per-row decorative bullet. If a screen wants one, that's a sign it's reaching for the icon-grid pattern, not solving a real legibility problem.
+
+### Macro figures: no new colors
+
+Calorie/Protein/Carb/Fat are, and remain, distinguished by **position and label only** — never by color — exactly as `DiaryScreen.tsx`'s original `ProgressRow` already did. Different nutrition apps use wildly inconsistent macro color conventions (protein is orange in one app, blue in another); rather than invent a fourth convention, this system doesn't color-code macros at all.
+
+**On-track vs. over-target is weight-coded, not hue-coded**: a `ProgressBar`/`ProgressRing` fills `ink` while the value is under goal, and switches to `accent` once at/over goal — reusing the palette section's existing rule that `accent` already doubles as the error/negative-state color, rather than introducing a third hue for "warning." A bar that goes over caps its visual fill at 100% width with a short mono caption (e.g. `+38g over`) so "over" is legible from the number, not just inferred from a color swap.
+
+### `ProgressRing`: a narrow, named exception
+
+`foodDensity.ts`'s rejection of pie/donut/bar-for-portions charts (below) still stands — it does not apply to `ProgressRing`. The rejected charts asked the eye to compare *multiple slices/bars against each other* (portion composition across foods), which is the angle/area-comparison task people are bad at. `ProgressRing` shows exactly **one** value (today's calories vs. goal) as a single fill-percentage — a different, easier perceptual task, the same one a single linear `ProgressBar` already performs, just drawn as a ring for the one headline "how's today going" number on `DiaryScreen.tsx`.
+
+This is intentionally narrow: **`ProgressRing` is used in exactly one place in the app.** If a future feature wants a ring per macro or a ring per food item, that's multi-series again and belongs back in `foodDensity.ts`'s plain-language territory, not a new ring.
+
 ## Verification checklist
 
 - [ ] No `Inter`/`Roboto`/system-font family ever resolves in `getComputedStyle(...).fontFamily` on any title, body, or numeric element.
@@ -107,3 +140,24 @@ We tried a plate-shaped chart (pie/donut, then a density-corrected version, then
 - [ ] No bordered/background "card" boxes remain around meal rows, the progress section, or chip/tab groups — hairline rules only.
 - [ ] All 5 screens (logged out, survey, crafted meals, eatery detail, diary) render real Cornell dining content, never placeholder copy.
 - [ ] Gram inputs, preference toggles, and "Log meal" flows still function end-to-end.
+- [ ] No icon ever sits inside a colored/filled chip or circle background.
+- [ ] No icon uses a color outside `ink` / `accent` / `inkSecondary`.
+- [ ] Every `ProgressBar` / `ProgressRing` renders a real fetched value — no placeholder/demo percentage left in from development.
+- [ ] `ProgressRing` usage count is exactly 1 (today's calories on `DiaryScreen.tsx`). A second usage is a scope violation and needs explicit re-review, not a quiet addition.
+
+## Touch-target audit (Phase 6)
+
+Computed from rendered style values (padding + line-height + hitSlop), not measured on a physical device — no device/simulator was available in the environment this pass ran in. Re-verify on a real device before shipping; the arithmetic below is the best available substitute, not a replacement for it.
+
+| Element | Before | After | How it clears 44pt |
+|---|---|---|---|
+| `Chip` / `Tab` (shared components) | Tab: 24px content + 16px hitSlop = 40px (short) | Tab hitSlop → 12/6: 24 + 24 = 48px | hitSlop only — visual size unchanged, density preserved |
+| `Button` (shared component) | N/A (new) | `minHeight: touchTarget.min` | Direct backstop, independent of label length |
+| Diary rate icons (👍/👎 → `ThumbsUp`/`ThumbsDown`) | hitSlop 10: 16 + 20 = 36px (short) | hitSlop 14: 16 + 28 = 44px | hitSlop; `rateButtons` gap bumped to `space.xxl` (32) so the two opposite-meaning targets' hit areas don't overlap (14+14=28 needed) |
+| `EateryDetailScreen` gramsInput | ~26px (short) | `minHeight: touchTarget.min`, width unchanged at 56 | Direct backstop — width stays narrow (numeric entry doesn't need to grow) |
+| `PreferencesForm` `NumberField` input | ~36px (short) | `minHeight: touchTarget.min` | Direct backstop |
+| Kicker nav links (Preferences/Diary/Log out/etc., 4 files) | ~16px, zero padding (short) | `paddingVertical: space.sm` + hitSlop 6/8 = 16+16+12 = 44px | Padding grows the real box (so adjacent links' hitSlop only just touches, never overlaps at the existing 16px gap) rather than hitSlop alone |
+| `EateryDetailScreen` "Compare today's picks" / `FoodSurveyScreen` "Skip" | ~16px, zero padding (short) | `paddingVertical: space.sm` + hitSlop 6 = 44px | Same pattern, single standalone link so no adjacency concern |
+| Sticky tray "Log Meal" (`EateryDetailScreen`), all `Button` usages | Already ≥44 by construction | — | `Button`'s `minHeight` |
+
+Primary-CTA placement: `EateryDetailScreen`'s "Log Meal" stays in a sticky bottom tray (bottom-third, one-handed reach — unchanged from the original design). `CraftedMealsList`'s per-eatery "Log this meal" buttons are inline in a scrolling list of independent actions (no single "bottom" applies to a repeated per-item action) — reviewed, not a violation. `PreferencesForm`'s Save button sits at the end of a long scroll; this is the same length/structure question Phase 7 already flags as open, not something to silently resolve here.

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
 import {
   ACTIVITY_LEVELS,
   ActivityLevel,
@@ -16,7 +16,10 @@ import {
   putPreferences,
   recommendTargets,
 } from './api';
-import { colors, radius, space, type } from './theme';
+import Button from './components/Button';
+import Chip from './components/Chip';
+import Tab from './components/Tab';
+import { colors, radius, space, touchTarget, type } from './theme';
 
 const DEFAULTS: Preferences = {
   calorie_goal: 2200,
@@ -68,22 +71,6 @@ const EATING_STYLE_LABELS: Record<string, string> = {
   high_fiber: 'Emphasize fiber',
   whole_foods_focus: 'Prefer whole & minimally processed foods',
 };
-
-function Chip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  return (
-    <Pressable onPress={onPress} style={[styles.chip, selected && styles.chipSelected]}>
-      <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{label.replace('_', ' ')}</Text>
-    </Pressable>
-  );
-}
-
-function Tab({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  return (
-    <Pressable onPress={onPress} style={[styles.tab, active && styles.tabActive]}>
-      <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
-    </Pressable>
-  );
-}
 
 function NumberField({
   label,
@@ -274,9 +261,12 @@ export default function PreferencesForm({
 
           {calcError && <Text style={styles.error}>{calcError}</Text>}
 
-          <Pressable style={styles.calcButton} onPress={handleCalculate} disabled={calculating}>
-            <Text style={styles.calcButtonText}>{calculating ? 'Calculating…' : 'Calculate my targets →'}</Text>
-          </Pressable>
+          <Button
+            label={calculating ? 'Calculating…' : 'Calculate my targets →'}
+            onPress={handleCalculate}
+            disabled={calculating}
+            style={styles.calcButton}
+          />
 
           {calcResult && (
             <Text style={styles.calcResult}>
@@ -355,11 +345,12 @@ export default function PreferencesForm({
 
       {error && <Text style={styles.error}>{error}</Text>}
 
-      <Pressable style={styles.saveButton} onPress={handleSave} disabled={saving}>
-        <Text style={styles.saveButtonText}>
-          {saving ? 'Saving…' : isUpdate ? 'Save changes →' : 'Save & see meals →'}
-        </Text>
-      </Pressable>
+      <Button
+        label={saving ? 'Saving…' : isUpdate ? 'Save changes →' : 'Save & see meals →'}
+        onPress={handleSave}
+        disabled={saving}
+        style={styles.saveButton}
+      />
     </View>
   );
 }
@@ -378,6 +369,9 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.ink,
     borderRadius: radius.none,
     paddingVertical: space.sm,
+    // Direct backstop for the 44pt touch-target minimum — see Phase 6 audit
+    // (same reasoning as EateryDetailScreen's gramsInput).
+    minHeight: touchTarget.min,
     fontFamily: 'IBMPlexMono_400Regular',
     fontSize: 17,
     color: colors.ink,
@@ -395,38 +389,10 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   tabRow: { flexDirection: 'row', gap: space.lg, marginBottom: space.lg },
-  tab: { borderBottomWidth: 2, borderBottomColor: 'transparent', paddingBottom: space.xs },
-  tabActive: { borderBottomColor: colors.accent },
-  tabText: { ...type.kicker, color: colors.inkTertiary },
-  tabTextActive: { color: colors.ink },
   recommendPanel: { marginBottom: space.sm },
-  calcButton: {
-    backgroundColor: colors.accent,
-    borderRadius: radius.none,
-    paddingVertical: 12,
-    alignItems: 'center',
-    marginTop: space.md,
-  },
-  calcButtonText: { ...type.button },
+  calcButton: { marginTop: space.md },
   calcResult: { ...type.mono, marginTop: space.md },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.md, marginBottom: space.md },
-  chip: {
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-    paddingVertical: space.xs,
-    marginRight: space.xs,
-    marginBottom: space.xs,
-  },
-  chipSelected: { borderBottomColor: colors.accent },
-  chipText: { ...type.body, fontSize: 13, color: colors.inkSecondary, textTransform: 'capitalize' },
-  chipTextSelected: { color: colors.ink, fontFamily: 'Archivo_600SemiBold' },
   error: { ...type.body, color: colors.accent, marginTop: space.md },
-  saveButton: {
-    backgroundColor: colors.accent,
-    borderRadius: radius.none,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: space.xl,
-  },
-  saveButtonText: { ...type.button },
+  saveButton: { marginTop: space.xl },
 });

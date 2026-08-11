@@ -1,8 +1,56 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { DaySummary, LoggedMeal, getLoggedMealsSummary, getLoggedMealsToday, rateMeal } from './api';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import ThumbsUp from 'lucide-react-native/icons/thumbs-up';
+import ThumbsDown from 'lucide-react-native/icons/thumbs-down';
+import { DaySummary, LoggedMeal, Preferences, getLoggedMealsSummary, getLoggedMealsToday, getPreferences, rateMeal } from './api';
+import Icon from './components/Icon';
+import ProgressBar from './components/ProgressBar';
+import ProgressRing from './components/ProgressRing';
 import { describePortion } from './foodDensity';
-import { colors, radius, space, type } from './theme';
+import { light } from './haptics';
+import { colors, space, type } from './theme';
+
+// "YYYY-MM-DD" parsed as local calendar date, not through `new Date(str)`
+// (which reads a date-only string as UTC midnight and can land on the wrong
+// weekday depending on the viewer's timezone offset).
+function weekdayLabel(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short' });
+}
+
+const WEEK_BAR_MAX_HEIGHT = 56;
+
+// Seven independent bars, each comparing its own day's calories to its own
+// goal — a bar-height comparison, not a multi-slice chart, so it doesn't
+// reintroduce the angle/area-comparison judgment Design.md's portion-chart
+// rejection is about. The bar supplements the number (shown under each
+// bar), it doesn't replace it.
+function WeekTrend({ summary }: { summary: DaySummary[] }) {
+  return (
+    <View style={styles.weekBars}>
+      {summary.map((day) => {
+        const pct = day.goal.calories > 0 ? day.totals.calories / day.goal.calories : 0;
+        const clamped = Math.max(0, Math.min(1, pct));
+        const over = day.goal.calories > 0 && day.totals.calories > day.goal.calories;
+        return (
+          <View key={day.date} style={styles.weekBarColumn}>
+            <View style={styles.weekBarTrack}>
+              <View
+                style={[
+                  styles.weekBarFill,
+                  over && styles.weekBarFillOver,
+                  { height: Math.max(2, clamped * WEEK_BAR_MAX_HEIGHT) },
+                ]}
+              />
+            </View>
+            <Text style={styles.weekBarValue}>{Math.round(day.totals.calories)}</Text>
+            <Text style={styles.weekBarLabel}>{weekdayLabel(day.date)}</Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
 
 export default function DiaryScreen({
   onGoToToday,
@@ -17,13 +65,16 @@ export default function DiaryScreen({
 }) {
   const [meals, setMeals] = useState<LoggedMeal[] | null>(null);
   const [summary, setSummary] = useState<DaySummary[] | null>(null);
+  const [prefs, setPrefs] = useState<Preferences | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   async function load() {
     try {
-      const [m, s] = await Promise.all([getLoggedMealsToday(), getLoggedMealsSummary(7)]);
+      const [m, s, p] = await Promise.all([getLoggedMealsToday(), getLoggedMealsSummary(7), getPreferences()]);
       setMeals(m);
       setSummary(s);
+      setPrefs(p);
     } catch (err: any) {
       setError(err.message);
     }
@@ -33,7 +84,14 @@ export default function DiaryScreen({
     load();
   }, []);
 
+  async function handleRefresh() {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }
+
   async function handleRate(meal: LoggedMeal, liked: boolean) {
+    light();
     const newValue = meal.liked === liked ? null : liked;
     const updated = await rateMeal(meal.id, newValue);
     setMeals((prev) => (prev ? prev.map((m) => (m.id === meal.id ? updated : m)) : prev));
@@ -58,20 +116,24 @@ export default function DiaryScreen({
   const today = summary[summary.length - 1];
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.accent} />}
+    >
       <View style={styles.nav}>
         <Text style={styles.title}>Diary</Text>
         <View style={styles.navLinks}>
-          <Pressable onPress={onGoToToday}>
+          <Pressable onPress={onGoToToday} hitSlop={{ top: 6, bottom: 6, left: 8, right: 8 }}>
             <Text style={styles.navLink}>Today's Meals</Text>
           </Pressable>
-          <Pressable onPress={onUpdatePreferences}>
+          <Pressable onPress={onUpdatePreferences} hitSlop={{ top: 6, bottom: 6, left: 8, right: 8 }}>
             <Text style={styles.navLink}>Preferences</Text>
           </Pressable>
-          <Pressable onPress={onRetakeFoodSurvey}>
+          <Pressable onPress={onRetakeFoodSurvey} hitSlop={{ top: 6, bottom: 6, left: 8, right: 8 }}>
             <Text style={styles.navLink}>Retake taste quiz</Text>
           </Pressable>
-          <Pressable onPress={onLogout}>
+          <Pressable onPress={onLogout} hitSlop={{ top: 6, bottom: 6, left: 8, right: 8 }}>
             <Text style={styles.navLink}>Log out</Text>
           </Pressable>
         </View>
@@ -79,10 +141,12 @@ export default function DiaryScreen({
 
       <View style={styles.progressSection}>
         <Text style={styles.progressTitle}>Today so far</Text>
-        <ProgressRow label="Calories" value={today.totals.calories} goal={today.goal.calories} />
-        <ProgressRow label="Protein" value={today.totals.protein_g} goal={today.goal.protein_g} unit="g" />
-        <ProgressRow label="Carbs" value={today.totals.carbs_g} goal={today.goal.carbs_g} unit="g" />
-        <ProgressRow label="Fat" value={today.totals.fat_g} goal={today.goal.fat_g} unit="g" />
+        <View style={styles.ringWrap}>
+          <ProgressRing value={today.totals.calories} goal={today.goal.calories} label="cal" size={148} strokeWidth={10} />
+        </View>
+        <ProgressBar label="Protein" value={today.totals.protein_g} goal={today.goal.protein_g} unit="g" />
+        <ProgressBar label="Carbs" value={today.totals.carbs_g} goal={today.goal.carbs_g} unit="g" />
+        <ProgressBar label="Fat" value={today.totals.fat_g} goal={today.goal.fat_g} unit="g" />
       </View>
 
       <Text style={styles.sectionTitle}>Logged today</Text>
@@ -96,11 +160,14 @@ export default function DiaryScreen({
                 {meal.eatery_name} · {meal.meal_period}
               </Text>
               <View style={styles.rateButtons}>
-                <Pressable onPress={() => handleRate(meal, true)}>
-                  <Text style={[styles.rateButton, meal.liked === true && styles.rateButtonActive]}>👍</Text>
+                {/* iconSize.sm (16px) + hitSlop 14 on each edge = 44pt tap
+                    target (touchTarget.min) — the glyph itself stays small,
+                    only the invisible tap area grows. See Phase 6 audit. */}
+                <Pressable onPress={() => handleRate(meal, true)} hitSlop={14}>
+                  <Icon icon={ThumbsUp} size="sm" color={meal.liked === true ? 'accent' : 'inkSecondary'} />
                 </Pressable>
-                <Pressable onPress={() => handleRate(meal, false)}>
-                  <Text style={[styles.rateButton, meal.liked === false && styles.rateButtonActive]}>👎</Text>
+                <Pressable onPress={() => handleRate(meal, false)} hitSlop={14}>
+                  <Icon icon={ThumbsDown} size="sm" color={meal.liked === false ? 'accent' : 'inkSecondary'} />
                 </Pressable>
               </View>
             </View>
@@ -123,34 +190,37 @@ export default function DiaryScreen({
       )}
 
       <Text style={styles.sectionTitle}>Last 7 days</Text>
-      {summary.map((day) => (
-        <View key={day.date} style={styles.weekRow}>
-          <Text style={styles.weekDate}>{day.date}</Text>
-          <Text style={styles.weekCalories}>
-            {Math.round(day.totals.calories)} / {Math.round(day.goal.calories)} cal
-          </Text>
-        </View>
-      ))}
-    </ScrollView>
-  );
-}
+      <WeekTrend summary={summary} />
 
-function ProgressRow({ label, value, goal, unit = '' }: { label: string; value: number; goal: number; unit?: string }) {
-  const pct = goal > 0 ? Math.min(100, Math.round((value / goal) * 100)) : 0;
-  return (
-    <View style={styles.progressRow}>
-      <View style={styles.progressLabelRow}>
-        <Text style={styles.progressLabel}>{label}</Text>
-        <Text style={styles.progressFigures}>
-          {Math.round(value)}
-          {unit} / {Math.round(goal)}
-          {unit}
-        </Text>
-      </View>
-      <View style={styles.progressBarTrack}>
-        <View style={[styles.progressBarFill, { width: `${pct}%` }]} />
-      </View>
-    </View>
+      {prefs && (prefs.liked_tags.length > 0 || prefs.disliked_tags.length > 0) && (
+        <View style={styles.tagsSection}>
+          {prefs.liked_tags.length > 0 && (
+            <>
+              <Text style={styles.sectionTitle}>You tend to like</Text>
+              <View style={styles.tagRow}>
+                {prefs.liked_tags.map((tag) => (
+                  <Text key={tag} style={styles.tag}>
+                    {tag.replace(/_/g, ' ')}
+                  </Text>
+                ))}
+              </View>
+            </>
+          )}
+          {prefs.disliked_tags.length > 0 && (
+            <>
+              <Text style={styles.sectionTitle}>You tend to avoid</Text>
+              <View style={styles.tagRow}>
+                {prefs.disliked_tags.map((tag) => (
+                  <Text key={tag} style={styles.tag}>
+                    {tag.replace(/_/g, ' ')}
+                  </Text>
+                ))}
+              </View>
+            </>
+          )}
+        </View>
+      )}
+    </ScrollView>
   );
 }
 
@@ -162,7 +232,9 @@ const styles = StyleSheet.create({
   nav: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: space.xl },
   title: { ...type.display, fontSize: 28 },
   navLinks: { flexDirection: 'row', gap: space.lg },
-  navLink: { ...type.kicker, color: colors.accent },
+  // paddingVertical + hitSlop together clear the 44pt touch-target minimum
+  // (kicker lineHeight 16 + padding 16 + hitSlop 12 = 44) — see Phase 6 audit.
+  navLink: { ...type.kicker, color: colors.accent, paddingVertical: space.sm },
   progressSection: {
     marginBottom: space.xxl,
     paddingBottom: space.lg,
@@ -170,12 +242,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.hairline,
   },
   progressTitle: { ...type.kicker, marginBottom: space.md },
-  progressRow: { marginBottom: space.md },
-  progressLabelRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: space.xs },
-  progressLabel: { ...type.body, fontSize: 14 },
-  progressFigures: { ...type.mono },
-  progressBarTrack: { height: 4, borderRadius: radius.none, backgroundColor: colors.disabled, overflow: 'hidden' },
-  progressBarFill: { height: 4, backgroundColor: colors.accent },
+  ringWrap: { alignItems: 'center', marginBottom: space.lg },
   sectionTitle: {
     ...type.kicker,
     marginBottom: space.md,
@@ -192,19 +259,36 @@ const styles = StyleSheet.create({
   },
   mealHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: space.sm },
   mealEatery: { fontFamily: 'Fraunces_600SemiBold', fontSize: 16, color: colors.ink },
-  rateButtons: { flexDirection: 'row', gap: space.sm },
-  rateButton: { fontSize: 16, opacity: 0.35 },
-  rateButtonActive: { opacity: 1 },
+  // gap must clear 2x hitSlop (14+14=28) so the like/dislike tap areas never
+  // overlap — these are opposite-meaning actions, so a mis-tap here is worse
+  // than most. See Phase 6 audit.
+  rateButtons: { flexDirection: 'row', gap: space.xxl },
   itemText: { ...type.body, fontSize: 14 },
   itemFigures: { ...type.mono, fontSize: 13 },
   mealTotals: { ...type.monoEmphasis, marginTop: space.sm },
-  weekRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: space.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.hairline,
+  weekBars: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: space.lg },
+  weekBarColumn: { alignItems: 'center', flex: 1 },
+  weekBarTrack: {
+    width: 12,
+    height: WEEK_BAR_MAX_HEIGHT,
+    justifyContent: 'flex-end',
+    backgroundColor: colors.disabled,
   },
-  weekDate: { ...type.body, fontSize: 13, color: colors.inkSecondary },
-  weekCalories: { ...type.mono },
+  weekBarFill: { width: 12, backgroundColor: colors.ink },
+  weekBarFillOver: { backgroundColor: colors.accent },
+  weekBarValue: { ...type.mono, fontSize: 10, marginTop: space.xs },
+  weekBarLabel: { ...type.caption, marginTop: 2 },
+  tagsSection: { marginTop: space.sm },
+  tagRow: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: space.lg },
+  tag: {
+    ...type.body,
+    fontSize: 13,
+    color: colors.ink,
+    textTransform: 'capitalize',
+    borderBottomWidth: 2,
+    borderBottomColor: colors.accent,
+    paddingVertical: space.xs,
+    marginRight: space.md,
+    marginBottom: space.xs,
+  },
 });
