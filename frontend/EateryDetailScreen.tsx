@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { EateryCraftedOptions, EateryMenu, LoggedMeal, Totals, getCraftedMealsForEatery, logMeal } from './api';
 import Button from './components/Button';
 import CraftedMealCard, { LogStatus } from './components/CraftedMealCard';
 import ListRow from './components/ListRow';
+import PortionStepper from './components/PortionStepper';
 import ProgressBar from './components/ProgressBar';
 import Tab from './components/Tab';
-import { describePortion } from './foodDensity';
+import { getPortionUnit } from './foodDensity';
 import { success } from './haptics';
-import { colors, radius, space, touchTarget, type } from './theme';
+import { colors, space, type } from './theme';
 
 // Mirrors app/services/station_survey.py's STAPLE_STATIONS — keep in sync
 // manually (no shared schema, same precedent as DIET_TAGS/ALLERGENS in
@@ -190,28 +191,21 @@ export default function EateryDetailScreen({
               <View key={category.category} style={styles.category}>
                 <Text style={styles.categoryTitle}>{category.category}</Text>
                 {category.items.map((item) => {
-                  const enteredGrams = grams[item.name] ?? 0;
-                  const portion = enteredGrams > 0 ? describePortion({ name: item.name, grams: enteredGrams }) : '';
                   return (
                     <ListRow key={item.name}>
                       <View style={styles.itemInfo}>
                         <Text style={styles.itemName}>{item.name}</Text>
                         <Text style={styles.itemCalories}>
                           {item.nutrition ? `${Math.round(item.nutrition.calories_per_100g)} cal/100g` : 'no nutrition data'}
-                          {portion ? ` · ${portion}` : ''}
                           {item.nutrition?.source === 'llm_estimate' ? ' · estimated' : ''}
                         </Text>
                       </View>
-                      <TextInput
-                        style={styles.gramsInput}
-                        keyboardType="numeric"
-                        placeholder="0g"
-                        placeholderTextColor={colors.inkTertiary}
-                        value={grams[item.name] ? String(grams[item.name]) : ''}
-                        editable={!!item.nutrition}
-                        onChangeText={(text) =>
-                          setGrams({ ...grams, [item.name]: Number(text.replace(/[^0-9]/g, '')) || 0 })
-                        }
+                      <PortionStepper
+                        name={item.name}
+                        originalGrams={getPortionUnit(item).gramsPerUnit}
+                        grams={grams[item.name] ?? 0}
+                        onChange={(g) => setGrams({ ...grams, [item.name]: g })}
+                        disabled={!item.nutrition}
                       />
                     </ListRow>
                   );
@@ -281,22 +275,6 @@ const styles = StyleSheet.create({
   itemInfo: { flex: 1, paddingRight: space.md },
   itemName: { ...type.body, fontSize: 14 },
   itemCalories: { ...type.caption },
-  gramsInput: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.ink,
-    borderRadius: radius.none,
-    width: 56,
-    // Width stays fixed (numeric entry doesn't need to grow), but the
-    // original paddingVertical(4) rendered well under the 44pt minimum —
-    // minHeight is a direct backstop rather than tuning padding against an
-    // uncertain TextInput line-height. See Phase 6 audit.
-    minHeight: touchTarget.min,
-    textAlign: 'center',
-    paddingVertical: space.xs,
-    fontFamily: 'IBMPlexMono_400Regular',
-    fontSize: 14,
-    color: colors.ink,
-  },
   tray: { borderTopWidth: 1, borderTopColor: colors.hairline, padding: space.lg, backgroundColor: colors.paper },
   trayText: { ...type.monoEmphasis, marginBottom: space.sm, textAlign: 'center' },
   error: { ...type.body, color: colors.accent, marginBottom: space.sm, textAlign: 'center' },

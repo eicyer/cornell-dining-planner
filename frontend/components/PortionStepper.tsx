@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { describePortion } from '../foodDensity';
+import { describePortion, getPortionUnit, stepPortionGrams } from '../foodDensity';
 import { colors, radius, space, type } from '../theme';
 
 // Step size is half the suggested portion — so tapping +/- moves through the
@@ -19,14 +19,20 @@ export default function PortionStepper({
   originalGrams,
   grams,
   onChange,
+  disabled = false,
 }: {
   name: string;
   originalGrams: number;
   grams: number;
   onChange: (grams: number) => void;
+  disabled?: boolean;
 }) {
   const step = Math.max(5, Math.round(originalGrams * STEP_FRACTION));
-  const portion = describePortion({ name, grams });
+  const unit = getPortionUnit({ name });
+  // Portion buttons and the grams TextInput both write the same `grams`
+  // via the same onChange — that's what keeps the two rows in sync no
+  // matter which one the user adjusts.
+  const portionLabel = describePortion({ name, grams }) || `0 ${unit.pluralLabel}`;
 
   return (
     <View style={styles.container}>
@@ -35,23 +41,44 @@ export default function PortionStepper({
           onPress={() => onChange(Math.max(0, grams - step))}
           hitSlop={10}
           style={styles.stepButton}
-          disabled={grams <= 0}
+          disabled={disabled || grams <= 0}
         >
-          <Text style={[styles.stepButtonText, grams <= 0 && styles.stepButtonTextDisabled]}>–</Text>
+          <Text style={[styles.stepButtonText, (disabled || grams <= 0) && styles.stepButtonTextDisabled]}>–</Text>
         </Pressable>
         <TextInput
           style={styles.gramsInput}
           keyboardType="numeric"
           value={String(Math.round(grams))}
+          editable={!disabled}
           onChangeText={(t) => onChange(Math.max(0, Number(t.replace(/[^0-9]/g, '')) || 0))}
         />
-        <Pressable onPress={() => onChange(grams + step)} hitSlop={10} style={styles.stepButton}>
-          <Text style={styles.stepButtonText}>+</Text>
+        <Pressable onPress={() => onChange(grams + step)} hitSlop={10} style={styles.stepButton} disabled={disabled}>
+          <Text style={[styles.stepButtonText, disabled && styles.stepButtonTextDisabled]}>+</Text>
+        </Pressable>
+      </View>
+      <View style={[styles.row, styles.portionRow]}>
+        <Pressable
+          onPress={() => onChange(stepPortionGrams({ name }, grams, -1))}
+          hitSlop={10}
+          style={styles.stepButton}
+          disabled={disabled || grams <= 0}
+        >
+          <Text style={[styles.stepButtonText, (disabled || grams <= 0) && styles.stepButtonTextDisabled]}>–</Text>
+        </Pressable>
+        <Text style={[styles.portionLabel, disabled && styles.stepButtonTextDisabled]} numberOfLines={1}>
+          {portionLabel}
+        </Text>
+        <Pressable
+          onPress={() => onChange(stepPortionGrams({ name }, grams, 1))}
+          hitSlop={10}
+          style={styles.stepButton}
+          disabled={disabled}
+        >
+          <Text style={[styles.stepButtonText, disabled && styles.stepButtonTextDisabled]}>+</Text>
         </Pressable>
       </View>
       <Text style={styles.caption} numberOfLines={1}>
         {formatMultiplier(originalGrams, grams)}
-        {portion ? ` · ${portion}` : ''}
       </Text>
     </View>
   );
@@ -60,6 +87,7 @@ export default function PortionStepper({
 const styles = StyleSheet.create({
   container: { alignItems: 'flex-end' },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
+  portionRow: { marginTop: 2 },
   stepButton: {
     width: 22,
     height: 22,
@@ -80,6 +108,13 @@ const styles = StyleSheet.create({
     fontFamily: 'IBMPlexMono_400Regular',
     fontSize: 14,
     color: colors.ink,
+  },
+  portionLabel: {
+    fontFamily: 'IBMPlexMono_400Regular',
+    fontSize: 12,
+    color: colors.inkSecondary,
+    minWidth: 64,
+    textAlign: 'center',
   },
   caption: { ...type.caption, marginTop: 2 },
 });
