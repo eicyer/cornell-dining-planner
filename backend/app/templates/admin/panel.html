@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Food Database — Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;0,700;1,500&family=Archivo:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --paper: #F7F3EA;
+    --ink: #1C1A17;
+    --ink-secondary: #6B6355;
+    --ink-tertiary: #9C9483;
+    --hairline: #E4DCC8;
+    --accent: #B31B1B;
+    --accent-ink: #FFFFFF;
+    --disabled: #D8CFB8;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Archivo', sans-serif;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 32px 24px 96px; }
+
+  header.top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 1px solid var(--hairline);
+    padding-bottom: 20px;
+    margin-bottom: 24px;
+  }
+  .title {
+    font-family: 'Fraunces', serif;
+    font-weight: 700;
+    font-size: 28px;
+    margin: 0;
+  }
+  .who { text-align: right; font-size: 12px; color: var(--ink-tertiary); }
+  .who .email { font-family: 'IBM Plex Mono', monospace; color: var(--ink-secondary); }
+  .who button {
+    background: none; border: none; padding: 0; margin-left: 8px;
+    font-family: 'Archivo', sans-serif; font-size: 12px; color: var(--ink-tertiary);
+    text-decoration: underline; cursor: pointer;
+  }
+
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+    padding-bottom: 16px; margin-bottom: 8px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .controls input[type="text"], .controls select {
+    font-family: 'Archivo', sans-serif; font-size: 14px; color: var(--ink);
+    background: transparent; border: none; border-bottom: 1px solid var(--hairline);
+    padding: 6px 2px; outline: none;
+  }
+  .controls input[type="text"] { min-width: 240px; }
+  .controls input:focus, .controls select:focus { border-bottom-color: var(--ink); }
+  .controls label.toggle {
+    font-size: 13px; color: var(--ink-secondary); display: flex; align-items: center; gap: 6px; cursor: pointer;
+  }
+  .count { font-size: 12px; color: var(--ink-tertiary); margin-left: auto; white-space: nowrap; }
+
+  .row {
+    border-bottom: 1px solid var(--hairline);
+    padding: 14px 0;
+    cursor: pointer;
+  }
+  .row-head {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto;
+    gap: 16px;
+    align-items: center;
+  }
+  .row-name {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: 16px;
+  }
+  .row-flag { color: var(--accent); font-size: 12px; font-weight: 600; margin-left: 8px; }
+  .row-tags { font-size: 12px; color: var(--ink-tertiary); margin-top: 3px; }
+  .row-source {
+    font-family: 'Archivo', sans-serif; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.6px; color: var(--ink-secondary);
+  }
+  .row-macros {
+    font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--ink-secondary);
+    white-space: nowrap;
+  }
+  .row-confidence { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--ink-tertiary); }
+
+  .editor { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--hairline); }
+  .field-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px 24px; margin-bottom: 16px; }
+  .field label {
+    display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px;
+    color: var(--ink-tertiary); margin-bottom: 4px;
+  }
+  .field input, .field select {
+    width: 100%; font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: var(--ink);
+    background: transparent; border: none; border-bottom: 1px solid var(--hairline); padding: 6px 2px; outline: none;
+  }
+  .field select { font-family: 'Archivo', sans-serif; }
+  .field input:focus, .field select:focus { border-bottom-color: var(--accent); }
+
+  .chip-group { margin-bottom: 16px; }
+  .chip-group .group-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--ink-tertiary); margin-bottom: 8px;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+  .chip {
+    font-size: 13px; color: var(--ink-secondary); border-bottom: 1px solid transparent;
+    cursor: pointer; user-select: none; padding-bottom: 2px;
+  }
+  .chip.selected { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+  .portion-line { font-size: 13px; color: var(--ink-tertiary); margin-bottom: 6px; }
+  .portion-line .mono { font-family: 'IBM Plex Mono', monospace; color: var(--ink-secondary); }
+  .portion-equiv {
+    font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--ink-secondary); margin-bottom: 6px;
+  }
+  .calorie-check { font-size: 13px; color: var(--ink-secondary); margin-bottom: 20px; }
+  .calorie-check.mismatch { color: var(--accent); font-weight: 600; }
+
+  .editor-actions { display: flex; gap: 20px; align-items: center; }
+  .save-btn {
+    background: var(--accent); color: var(--accent-ink); border: none;
+    font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 14px;
+    padding: 10px 24px; cursor: pointer;
+  }
+  .save-btn:disabled { background: var(--disabled); cursor: default; }
+  .cancel-link {
+    background: none; border: none; font-family: 'Archivo', sans-serif; font-size: 14px;
+    color: var(--ink-secondary); text-decoration: underline; cursor: pointer; padding: 0;
+  }
+  .save-status { font-size: 13px; color: var(--ink-tertiary); }
+  .save-status.error { color: var(--accent); }
+
+  .pager { display: flex; justify-content: center; gap: 24px; align-items: center; margin-top: 24px; }
+  .pager button {
+    background: none; border: none; font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 13px;
+    color: var(--ink); cursor: pointer; text-decoration: underline;
+  }
+  .pager button:disabled { color: var(--disabled); text-decoration: none; cursor: default; }
+  .pager .page-info { font-size: 12px; color: var(--ink-tertiary); }
+
+  .empty { padding: 48px 0; text-align: center; color: var(--ink-tertiary); font-size: 14px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <h1 class="title">Food Database</h1>
+      <div class="who">
+        <div>Signed in as <span class="email">{{ email }}</span></div>
+        <button onclick="fetch('/auth/logout', {method: 'POST', credentials: 'include'}).then(() => location.reload())">Log out</button>
+      </div>
+    </header>
+
+    <div class="controls">
+      <input type="text" id="search" placeholder="Search food name…" />
+      <select id="source">
+        <option value="">Any source</option>
+        <option value="usda">USDA</option>
+        <option value="llm_estimate">LLM estimate</option>
+      </select>
+      <select id="sort">
+        <option value="name">Sort: Name</option>
+        <option value="confidence_asc">Sort: Lowest confidence</option>
+        <option value="resolved_desc">Sort: Recently resolved</option>
+      </select>
+      <label class="toggle"><input type="checkbox" id="needsAttention" /> Needs attention only</label>
+      <div class="count" id="count"></div>
+    </div>
+
+    <div id="rows"></div>
+    <div class="pager" id="pager" style="display:none">
+      <button id="prevPage">← Prev</button>
+      <span class="page-info" id="pageInfo"></span>
+      <button id="nextPage">Next →</button>
+    </div>
+  </div>
+
+<script>
+const DIET_TAGS = {{ diet_tags | tojson }};
+const ALLERGENS = {{ allergens | tojson }};
+
+let state = { q: '', source: '', sort: 'name', needsAttention: false, page: 1, pageSize: 50, expanded: null };
+let latestData = null;
+
+const el = (id) => document.getElementById(id);
+
+function debounce(fn, ms) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+
+async function fetchFoods() {
+  const params = new URLSearchParams();
+  if (state.q) params.set('q', state.q);
+  if (state.source) params.set('source', state.source);
+  if (state.needsAttention) params.set('needs_attention', 'true');
+  params.set('sort', state.sort);
+  params.set('page', state.page);
+  params.set('page_size', state.pageSize);
+  const res = await fetch('/admin/api/foods?' + params.toString(), { credentials: 'include' });
+  if (!res.ok) {
+    el('rows').innerHTML = '<div class="empty">Failed to load (' + res.status + ')</div>';
+    return;
+  }
+  latestData = await res.json();
+  render();
+}
+
+function macroSummary(f) {
+  return Math.round(f.calories_per_100g) + ' cal · ' +
+    Math.round(f.protein_g_per_100g) + 'g P · ' +
+    Math.round(f.carbs_g_per_100g) + 'g C · ' +
+    Math.round(f.fat_g_per_100g) + 'g F';
+}
+
+function chipsHtml(vocab, selected, groupId) {
+  return vocab.map(v =>
+    `<span class="chip${selected.includes(v) ? ' selected' : ''}" data-value="${v}" data-group="${groupId}">${v.replace(/_/g, ' ')}</span>`
+  ).join('');
+}
+
+// Mirrors the backend's Atwater-factor check in admin_api.py exactly
+// (protein/carbs ~4 cal/g, fat ~9 cal/g, same 15% tolerance) so the live
+// recompute below agrees with what the server just rendered.
+const MACRO_CALORIE_MISMATCH_TOLERANCE = 0.15;
+
+function expectedCalories(protein, carbs, fat) {
+  return protein * 4 + carbs * 4 + fat * 9;
+}
+
+function calorieMismatch(calories, expected) {
+  if (calories <= 0) return expected > 0;
+  return Math.abs(expected - calories) / calories > MACRO_CALORIE_MISMATCH_TOLERANCE;
+}
+
+function portionEquivText(cal, protein, carbs, fat, gramsPerUnit, label) {
+  const scale = gramsPerUnit / 100;
+  return `≈ ${Math.round(cal * scale)} cal · ${(protein * scale).toFixed(1)}g P · ` +
+    `${(carbs * scale).toFixed(1)}g C · ${(fat * scale).toFixed(1)}g F per ${label} (${gramsPerUnit}g)`;
+}
+
+function calorieCheckText(cal, protein, carbs, fat) {
+  const expected = expectedCalories(protein, carbs, fat);
+  const mismatch = calorieMismatch(cal, expected);
+  const text = mismatch
+    ? `⚠ Macros imply ~${Math.round(expected)} cal/100g from protein/carbs/fat — listed as ${cal}.`
+    : `✓ Macros roughly match listed calories (~${Math.round(expected)} cal/100g implied).`;
+  return { text, mismatch };
+}
+
+function editorHtml(f) {
+  const check = calorieCheckText(f.calories_per_100g, f.protein_g_per_100g, f.carbs_g_per_100g, f.fat_g_per_100g);
+  return `
+    <div class="editor" data-grams-per-unit="${f.portion_grams_per_unit}" data-portion-label="${f.portion_label}">
+      <div class="field-grid">
+        <div class="field"><label>Calories / 100g</label><input type="number" step="any" data-field="calories_per_100g" value="${f.calories_per_100g}" /></div>
+        <div class="field"><label>Protein g / 100g</label><input type="number" step="any" data-field="protein_g_per_100g" value="${f.protein_g_per_100g}" /></div>
+        <div class="field"><label>Carbs g / 100g</label><input type="number" step="any" data-field="carbs_g_per_100g" value="${f.carbs_g_per_100g}" /></div>
+        <div class="field"><label>Fat g / 100g</label><input type="number" step="any" data-field="fat_g_per_100g" value="${f.fat_g_per_100g}" /></div>
+        <div class="field"><label>Sugar g / 100g</label><input type="number" step="any" data-field="sugar_g_per_100g" value="${f.sugar_g_per_100g ?? ''}" /></div>
+        <div class="field"><label>Fiber g / 100g</label><input type="number" step="any" data-field="fiber_g_per_100g" value="${f.fiber_g_per_100g ?? ''}" /></div>
+        <div class="field"><label>Source</label>
+          <select data-field="source">
+            <option value="usda" ${f.source === 'usda' ? 'selected' : ''}>USDA</option>
+            <option value="llm_estimate" ${f.source === 'llm_estimate' ? 'selected' : ''}>LLM estimate</option>
+          </select>
+        </div>
+        <div class="field"><label>Confidence (0–1)</label><input type="number" step="any" min="0" max="1" data-field="confidence_score" value="${f.confidence_score}" /></div>
+      </div>
+      <div class="chip-group">
+        <div class="group-label">Diet tags</div>
+        <div class="chips" data-chipgroup="diet_tags">${chipsHtml(DIET_TAGS, f.diet_tags, 'diet_tags')}</div>
+      </div>
+      <div class="chip-group">
+        <div class="group-label">Likely allergens</div>
+        <div class="chips" data-chipgroup="likely_allergens">${chipsHtml(ALLERGENS, f.likely_allergens, 'likely_allergens')}</div>
+      </div>
+      <div class="portion-line">
+        Portion mapping (read-only): <span class="mono">${f.portion_grams_per_unit}g / ${f.portion_label}</span>
+        — edit <span class="mono">frontend/foodDensity.ts</span> to change this.
+      </div>
+      <div class="portion-equiv" id="portionEquivText">${portionEquivText(f.calories_per_100g, f.protein_g_per_100g, f.carbs_g_per_100g, f.fat_g_per_100g, f.portion_grams_per_unit, f.portion_label)}</div>
+      <div class="calorie-check${check.mismatch ? ' mismatch' : ''}" id="calorieCheckText">${check.text}</div>
+      <div class="editor-actions">
+        <button class="save-btn" data-action="save">Save</button>
+        <button class="cancel-link" data-action="cancel">Cancel</button>
+        <span class="save-status"></span>
+      </div>
+    </div>
+  `;
+}
+
+function render() {
+  if (!latestData) return;
+  el('count').textContent = latestData.total + (latestData.total === 1 ? ' food' : ' foods');
+
+  if (latestData.items.length === 0) {
+    el('rows').innerHTML = '<div class="empty">No foods match.</div>';
+  } else {
+    el('rows').innerHTML = latestData.items.map(f => {
+      const expanded = state.expanded === f.item_name;
+      const tagsLine = [...f.diet_tags, ...f.likely_allergens].join(' · ');
+      return `
+        <div class="row" data-name="${f.item_name.replace(/"/g, '&quot;')}">
+          <div class="row-head">
+            <div>
+              <span class="row-name">${f.item_name}</span>${f.needs_attention ? '<span class="row-flag">· needs review</span>' : ''}
+              ${tagsLine ? `<div class="row-tags">${tagsLine}</div>` : ''}
+            </div>
+            <div class="row-source">${f.source === 'usda' ? 'USDA' : 'LLM'}</div>
+            <div class="row-confidence">${f.confidence_score.toFixed(2)}</div>
+            <div class="row-macros">${macroSummary(f)}</div>
+          </div>
+          ${expanded ? editorHtml(f) : ''}
+        </div>
+      `;
+    }).join('');
+  }
+
+  const totalPages = Math.max(1, Math.ceil(latestData.total / latestData.page_size));
+  el('pager').style.display = totalPages > 1 ? 'flex' : 'none';
+  el('pageInfo').textContent = `Page ${latestData.page} of ${totalPages}`;
+  el('prevPage').disabled = latestData.page <= 1;
+  el('nextPage').disabled = latestData.page >= totalPages;
+
+  wireRowEvents();
+}
+
+function wireRowEvents() {
+  document.querySelectorAll('.row').forEach(row => {
+    const name = row.dataset.name;
+    row.querySelector('.row-head').onclick = () => {
+      state.expanded = state.expanded === name ? null : name;
+      render();
+    };
+  });
+
+  const editor = document.querySelector('.editor');
+  if (editor) {
+    const gramsPerUnit = Number(editor.dataset.gramsPerUnit);
+    const portionLabel = editor.dataset.portionLabel;
+    const recompute = () => {
+      const num = (field) => Number(editor.querySelector(`[data-field="${field}"]`).value) || 0;
+      const cal = num('calories_per_100g');
+      const protein = num('protein_g_per_100g');
+      const carbs = num('carbs_g_per_100g');
+      const fat = num('fat_g_per_100g');
+      editor.querySelector('#portionEquivText').textContent =
+        portionEquivText(cal, protein, carbs, fat, gramsPerUnit, portionLabel);
+      const check = calorieCheckText(cal, protein, carbs, fat);
+      const checkEl = editor.querySelector('#calorieCheckText');
+      checkEl.textContent = check.text;
+      checkEl.classList.toggle('mismatch', check.mismatch);
+    };
+    ['calories_per_100g', 'protein_g_per_100g', 'carbs_g_per_100g', 'fat_g_per_100g'].forEach((field) => {
+      editor.querySelector(`[data-field="${field}"]`).addEventListener('input', recompute);
+    });
+  }
+
+  document.querySelectorAll('.chip').forEach(chip => {
+    chip.onclick = (ev) => {
+      ev.stopPropagation();
+      chip.classList.toggle('selected');
+    };
+  });
+
+  document.querySelectorAll('[data-action="cancel"]').forEach(btn => {
+    btn.onclick = (ev) => { ev.stopPropagation(); state.expanded = null; render(); };
+  });
+
+  document.querySelectorAll('[data-action="save"]').forEach(btn => {
+    btn.onclick = async (ev) => {
+      ev.stopPropagation();
+      const editor = btn.closest('.editor');
+      const row = btn.closest('.row');
+      const itemName = row.dataset.name;
+      const statusEl = editor.querySelector('.save-status');
+      const getVal = (field) => editor.querySelector(`[data-field="${field}"]`).value;
+      const getNum = (field) => { const v = getVal(field); return v === '' ? null : Number(v); };
+      const getChips = (group) =>
+        Array.from(editor.querySelectorAll(`[data-chipgroup="${group}"] .chip.selected`)).map(c => c.dataset.value);
+
+      const body = {
+        item_name: itemName,
+        source: getVal('source'),
+        calories_per_100g: getNum('calories_per_100g'),
+        protein_g_per_100g: getNum('protein_g_per_100g'),
+        carbs_g_per_100g: getNum('carbs_g_per_100g'),
+        fat_g_per_100g: getNum('fat_g_per_100g'),
+        sugar_g_per_100g: getNum('sugar_g_per_100g'),
+        fiber_g_per_100g: getNum('fiber_g_per_100g'),
+        confidence_score: getNum('confidence_score'),
+        diet_tags: getChips('diet_tags'),
+        likely_allergens: getChips('likely_allergens'),
+      };
+
+      btn.disabled = true;
+      statusEl.textContent = 'Saving…';
+      statusEl.classList.remove('error');
+
+      const res = await fetch('/admin/api/foods/detail', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        const msg = typeof errBody.detail === 'string'
+          ? errBody.detail
+          : Array.isArray(errBody.detail)
+            ? errBody.detail.map(d => d.msg).join('; ')
+            : 'Save failed';
+        statusEl.textContent = msg;
+        statusEl.classList.add('error');
+        btn.disabled = false;
+        return;
+      }
+
+      state.expanded = null;
+      await fetchFoods();
+    };
+  });
+}
+
+el('search').addEventListener('input', debounce((ev) => {
+  state.q = ev.target.value;
+  state.page = 1;
+  fetchFoods();
+}, 300));
+
+el('source').addEventListener('change', (ev) => { state.source = ev.target.value; state.page = 1; fetchFoods(); });
+el('sort').addEventListener('change', (ev) => { state.sort = ev.target.value; state.page = 1; fetchFoods(); });
+el('needsAttention').addEventListener('change', (ev) => { state.needsAttention = ev.target.checked; state.page = 1; fetchFoods(); });
+el('prevPage').addEventListener('click', () => { if (state.page > 1) { state.page -= 1; fetchFoods(); } });
+el('nextPage').addEventListener('click', () => { state.page += 1; fetchFoods(); });
+
+fetchFoods();
+</script>
+</body>
+</html>

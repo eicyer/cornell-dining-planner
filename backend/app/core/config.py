@@ -18,5 +18,8 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     usda_api_key: str = ""
 
+    # Sole account allowed into /admin — see docs/adr/0016-admin-panel-for-nutrition-corrections.
+    admin_email: str = "emiricyer07@gmail.com"
+
 
 settings = Settings()

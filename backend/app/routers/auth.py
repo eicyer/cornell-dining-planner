@@ -20,8 +20,15 @@ oauth.register(
 )
 
 
+# The only non-default post-login destination that will ever exist — a
+# literal safelist, not a general open-redirect-prone allowlist.
+ADMIN_NEXT_PATH = "/admin"
+
+
 @router.get("/login")
-async def login(request: Request):
+async def login(request: Request, next: str | None = None):
+    if next == ADMIN_NEXT_PATH:
+        request.session["post_login_redirect"] = ADMIN_NEXT_PATH
     redirect_uri = request.url_for("auth_callback")
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
@@ -41,7 +48,8 @@ async def auth_callback(request: Request, db: Session = Depends(get_db)):
         db.refresh(user)
 
     request.session["user_id"] = user.id
-    return RedirectResponse(url=settings.frontend_url)
+    next_path = request.session.pop("post_login_redirect", None)
+    return RedirectResponse(url=next_path or settings.frontend_url)
 
 
 @router.post("/logout")
