@@ -4,6 +4,7 @@ import ChevronRight from 'lucide-react-native/icons/chevron-right';
 import { EateryCrafted, Totals, logMeal } from './api';
 import CraftedMealCard, { LogStatus } from './components/CraftedMealCard';
 import Icon from './components/Icon';
+import TopNav from './components/TopNav';
 import { success } from './haptics';
 import { colors, interaction, space, type } from './theme';
 
@@ -53,25 +54,18 @@ export default function CraftedMealsList({
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
     >
-      <View style={styles.nav}>
-        <View>
-          <Text style={styles.kicker}>{todayKicker()}</Text>
-          <Text style={styles.title}>Today's Meals For You</Text>
-        </View>
-        <View style={styles.navLinks}>
-          <Pressable onPress={onUpdatePreferences} hitSlop={{ top: 6, bottom: 6, left: 8, right: 8 }}>
-            <Text style={styles.navLink}>Preferences</Text>
-          </Pressable>
-          <Pressable onPress={onRetakeFoodSurvey} hitSlop={{ top: 6, bottom: 6, left: 8, right: 8 }}>
-            <Text style={styles.navLink}>Retake taste quiz</Text>
-          </Pressable>
-          <Pressable onPress={onGoToDiary} hitSlop={{ top: 6, bottom: 6, left: 8, right: 8 }}>
-            <Text style={styles.navLink}>Diary</Text>
-          </Pressable>
-          <Pressable onPress={onLogout} hitSlop={{ top: 6, bottom: 6, left: 8, right: 8 }}>
-            <Text style={styles.navLink}>Log out</Text>
-          </Pressable>
-        </View>
+      <TopNav
+        current="today"
+        onGoToToday={() => {}}
+        onGoToDiary={onGoToDiary}
+        onUpdatePreferences={onUpdatePreferences}
+        onRetakeFoodSurvey={onRetakeFoodSurvey}
+        onLogout={onLogout}
+      />
+
+      <View style={styles.masthead}>
+        <Text style={styles.kicker}>{todayKicker()}</Text>
+        <Text style={styles.title}>Today's Meals For You</Text>
       </View>
 
       {eateries.map((eatery) => {
@@ -107,14 +101,11 @@ export default function CraftedMealsList({
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.paper },
-  content: { padding: 16, paddingTop: 56, maxWidth: 640, width: '100%', alignSelf: 'center' },
-  nav: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: space.xxl },
+  // No paddingTop: TopNav owns the status-bar/notch clearance for this screen.
+  content: { paddingHorizontal: space.lg, paddingBottom: space.xl, maxWidth: 640, width: '100%', alignSelf: 'center' },
+  masthead: { marginBottom: space.xxl },
   kicker: { ...type.kicker, marginBottom: space.xs },
   title: { fontFamily: 'Fraunces_700Bold', fontSize: 30, lineHeight: 36, color: colors.ink },
-  navLinks: { flexDirection: 'row', gap: space.lg },
-  // paddingVertical + hitSlop together clear the 44pt touch-target minimum
-  // (kicker lineHeight 16 + padding 16 + hitSlop 12 = 44) — see Phase 6 audit.
-  navLink: { ...type.kicker, color: colors.accent, paddingVertical: space.sm },
   eatery: {
     marginBottom: space.xxl,
     paddingBottom: space.xl,
