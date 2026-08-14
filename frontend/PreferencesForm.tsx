@@ -241,6 +241,25 @@ export default function PreferencesForm({
 
   const mealCount = Math.max(prefs.meals_per_day, 1);
 
+  // General adult macro split — midpoints of the AMDR (Institute of Medicine
+  // / USDA Dietary Guidelines: protein 10–35%, carb 45–65%, fat 20–35% of
+  // calories), rounded to the commonly-cited 20/50/30 default. This is a
+  // population-average starting point, not tailored to the user the way the
+  // body-stat "Recommend for me" path above is — it only reacts to whatever
+  // calorie number is currently entered.
+  const suggestedProtein = Math.round((prefs.calorie_goal * 0.2) / 4);
+  const suggestedCarbs = Math.round((prefs.calorie_goal * 0.5) / 4);
+  const suggestedFat = Math.round((prefs.calorie_goal * 0.3) / 9);
+  const suggestionApplied =
+    prefs.protein_goal_g === suggestedProtein &&
+    prefs.carb_goal_g === suggestedCarbs &&
+    prefs.fat_goal_g === suggestedFat;
+
+  function applySuggestedMacros() {
+    light();
+    setPrefs((p) => ({ ...p, protein_goal_g: suggestedProtein, carb_goal_g: suggestedCarbs, fat_goal_g: suggestedFat }));
+  }
+
   // --- Section summaries ---------------------------------------------------
 
   const targetsSummary =
@@ -406,6 +425,29 @@ export default function PreferencesForm({
           value={prefs.calorie_goal}
           onChange={(v) => setPrefs({ ...prefs, calorie_goal: v })}
         />
+
+        {prefs.calorie_goal > 0 && (
+          <View style={styles.suggestion}>
+            <Text style={styles.liveFigure}>
+              Average split for {round(prefs.calorie_goal)} cal: {suggestedProtein}g protein · {suggestedCarbs}g carbs ·{' '}
+              {suggestedFat}g fat
+            </Text>
+            <Text style={styles.fieldCaption}>
+              General adult guideline (20% protein / 50% carbs / 30% fat) — a starting point, not tailored to you.
+            </Text>
+            {!suggestionApplied && (
+              <Pressable
+                onPress={applySuggestedMacros}
+                hitSlop={{ top: 6, bottom: 6, left: 8, right: 8 }}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.nextLinkWrap, pressed && styles.nextLinkPressed]}
+              >
+                <Text style={styles.nextLink}>Use these →</Text>
+              </Pressable>
+            )}
+          </View>
+        )}
+
         <NumberField
           label="Protein (g)"
           step={5}
@@ -576,6 +618,7 @@ const styles = StyleSheet.create({
   field: { marginBottom: space.md },
   label: { ...type.kicker, marginTop: space.sm, marginBottom: space.sm },
   dailyTargetsLabel: { marginTop: space.xl },
+  suggestion: { marginTop: -space.xs, marginBottom: space.lg },
   fieldCaption: { ...type.caption, marginTop: space.xs },
   helperText: { ...type.body, color: colors.inkSecondary, marginBottom: space.md },
   numberRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
