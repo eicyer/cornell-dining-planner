@@ -41,7 +41,7 @@ This is genuinely how the app should read: `CraftedMealsList.tsx` renders the ki
 | `inkSecondary` | `#6B6355` | Secondary text — captions, rationale, inactive labels |
 | `inkTertiary` | `#9C9483` | Placeholder text, least-emphasis captions |
 | `hairline` | `#E4DCC8` | The *only* divider mechanism — replaces every border/box |
-| `accent` | `#B31B1B` | Cornell Red. The single saturated color: primary CTAs, active tab/chip underline, nav links, error text |
+| `accent` | `#B31B1B` | Cornell Red. The single saturated color: primary CTAs, active tab/chip underline, current-section rule and hover state in `TopNav`, error text |
 | `accentInk` | `#FFFFFF` | Text on top of a solid `accent` fill |
 | `disabled` | `#D8CFB8` | Disabled buttons, progress-bar track |
 | `neutralFallback` | `#A8A093` | Warm stand-in for any unmatched food-color lookup |
@@ -84,6 +84,13 @@ Rule: Fraunces is for editorial content (names, rationale, headlines). Archivo i
 | Boxed `gramsInput` / `numberInput` (border + radius) | Underline input (`borderBottomWidth: 1`), mono font for the value |
 | Boxed `textArea` | Underline input, Archivo (prose, not data) |
 | `logButtonDone` (green fill) | `accent`-outline button (no second hue introduced) |
+| Four all-`accent` kicker links jammed into the right half of the title row (`CraftedMealsList`, `DiaryScreen`) | `components/TopNav.tsx` — a masthead bar on its own line above the title: section nav (Today / Diary) left, account links right, one hairline rule closing it |
+
+### `TopNav` emphasis
+
+Making every nav link `accent` gave four equally-loud red labels and no sense of place. `TopNav` reuses the underline-tab idiom instead: the **current** section is `ink` with a 2px `accent` bottom rule; every other link is `inkSecondary` and turns `accent` on hover (web) or dims to `interaction.pressedOpacity` on press. `accent` is still the only saturated color, it just marks *where you are* and *what you're touching* rather than painting the whole row. Every link is always present on both screens (the current one included, marked rather than omitted) so the bar doesn't reshuffle between screens.
+
+`TopNav` also owns its screens' status-bar/notch clearance via `useSafeAreaInsets()` — `CraftedMealsList` and `DiaryScreen` no longer hardcode `paddingTop: 56`, a number that clipped close to the notch on a phone and left the links floating detached from the page on web.
 
 Rows that were already hairline-only (`weekRow`, `itemRow` in `EateryDetailScreen`, the `eatery` block in `CraftedMealsList`) keep that pattern, just recolored to `colors.hairline`.
 
@@ -156,7 +163,7 @@ Computed from rendered style values (padding + line-height + hitSlop), not measu
 | Diary rate icons (👍/👎 → `ThumbsUp`/`ThumbsDown`) | hitSlop 10: 16 + 20 = 36px (short) | hitSlop 14: 16 + 28 = 44px | hitSlop; `rateButtons` gap bumped to `space.xxl` (32) so the two opposite-meaning targets' hit areas don't overlap (14+14=28 needed) |
 | `EateryDetailScreen` gramsInput | ~26px (short) | `minHeight: touchTarget.min`, width unchanged at 56 | Direct backstop — width stays narrow (numeric entry doesn't need to grow) |
 | `PreferencesForm` `NumberField` input | ~36px (short) | `minHeight: touchTarget.min` | Direct backstop |
-| Kicker nav links (Preferences/Diary/Log out/etc., 4 files) | ~16px, zero padding (short) | `paddingVertical: space.sm` + hitSlop 6/8 = 16+16+12 = 44px | Padding grows the real box (so adjacent links' hitSlop only just touches, never overlaps at the existing 16px gap) rather than hitSlop alone |
+| Kicker nav links (Preferences/Diary/Log out/etc.) | ~16px, zero padding (short) | Now `components/TopNav.tsx`: `paddingVertical: 6` + hitSlop 8 = 16+12+16 = 44px | Padding grows the real box; the 8px horizontal hitSlop stays under half the 16px column gap so adjacent links' tap areas never overlap |
 | `EateryDetailScreen` "Compare today's picks" / `FoodSurveyScreen` "Skip" | ~16px, zero padding (short) | `paddingVertical: space.sm` + hitSlop 6 = 44px | Same pattern, single standalone link so no adjacency concern |
 | Sticky tray "Log Meal" (`EateryDetailScreen`), all `Button` usages | Already ≥44 by construction | — | `Button`'s `minHeight` |
 

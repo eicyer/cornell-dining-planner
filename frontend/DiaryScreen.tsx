@@ -6,6 +6,7 @@ import { DaySummary, LoggedMeal, Preferences, getLoggedMealsSummary, getLoggedMe
 import Icon from './components/Icon';
 import ProgressBar from './components/ProgressBar';
 import ProgressRing from './components/ProgressRing';
+import TopNav from './components/TopNav';
 import { describePortion } from './foodDensity';
 import { light } from './haptics';
 import { colors, space, type } from './theme';
@@ -121,23 +122,16 @@ export default function DiaryScreen({
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.accent} />}
     >
-      <View style={styles.nav}>
-        <Text style={styles.title}>Diary</Text>
-        <View style={styles.navLinks}>
-          <Pressable onPress={onGoToToday} hitSlop={{ top: 6, bottom: 6, left: 8, right: 8 }}>
-            <Text style={styles.navLink}>Today's Meals</Text>
-          </Pressable>
-          <Pressable onPress={onUpdatePreferences} hitSlop={{ top: 6, bottom: 6, left: 8, right: 8 }}>
-            <Text style={styles.navLink}>Preferences</Text>
-          </Pressable>
-          <Pressable onPress={onRetakeFoodSurvey} hitSlop={{ top: 6, bottom: 6, left: 8, right: 8 }}>
-            <Text style={styles.navLink}>Retake taste quiz</Text>
-          </Pressable>
-          <Pressable onPress={onLogout} hitSlop={{ top: 6, bottom: 6, left: 8, right: 8 }}>
-            <Text style={styles.navLink}>Log out</Text>
-          </Pressable>
-        </View>
-      </View>
+      <TopNav
+        current="diary"
+        onGoToToday={onGoToToday}
+        onGoToDiary={() => {}}
+        onUpdatePreferences={onUpdatePreferences}
+        onRetakeFoodSurvey={onRetakeFoodSurvey}
+        onLogout={onLogout}
+      />
+
+      <Text style={styles.title}>Diary</Text>
 
       <View style={styles.progressSection}>
         <Text style={styles.progressTitle}>Today so far</Text>
@@ -226,15 +220,11 @@ export default function DiaryScreen({
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.paper },
-  content: { padding: 16, paddingTop: 56, paddingBottom: 40, maxWidth: 640, width: '100%', alignSelf: 'center' },
+  // No paddingTop: TopNav owns the status-bar/notch clearance for this screen.
+  content: { paddingHorizontal: space.lg, paddingBottom: 40, maxWidth: 640, width: '100%', alignSelf: 'center' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: colors.paper },
   error: { ...type.body, color: colors.accent, textAlign: 'center' },
-  nav: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: space.xl },
-  title: { ...type.display, fontSize: 28 },
-  navLinks: { flexDirection: 'row', gap: space.lg },
-  // paddingVertical + hitSlop together clear the 44pt touch-target minimum
-  // (kicker lineHeight 16 + padding 16 + hitSlop 12 = 44) — see Phase 6 audit.
-  navLink: { ...type.kicker, color: colors.accent, paddingVertical: space.sm },
+  title: { ...type.display, fontSize: 28, marginBottom: space.xl },
   progressSection: {
     marginBottom: space.xxl,
     paddingBottom: space.lg,
