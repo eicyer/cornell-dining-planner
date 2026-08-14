@@ -86,6 +86,21 @@ Rule: Fraunces is for editorial content (names, rationale, headlines). Archivo i
 | `logButtonDone` (green fill) | `accent`-outline button (no second hue introduced) |
 | Four all-`accent` kicker links jammed into the right half of the title row (`CraftedMealsList`, `DiaryScreen`) | `components/TopNav.tsx` — a masthead bar on its own line above the title: section nav (Today / Diary) left, account links right, one hairline rule closing it |
 
+### `Disclosure`: sectioning long forms
+
+`PreferencesForm` was one ~400-line continuous scroll of every question the app asks. `components/Disclosure.tsx` breaks it into four collapsible sections (Daily targets / Diet & allergens / Eating style / Foods you like & dislike), one open at a time.
+
+The section header is what "a nice looking button" means in this system — not a filled pill or a rounded card, but a full-width pressable row carrying a mono step number, a Fraunces title, a **live one-line summary of the section's current answers**, and a chevron that rotates on open. Hairline rules top and bottom do the grouping a box would do elsewhere. The summary is what makes this a disclosure rather than just hidden fields: collapsed, every answer is still readable, so the page is a scannable overview instead of a wall of inputs.
+
+- Sections whose summary is a placeholder render it in the app's existing italic empty-state voice (`Fraunces_500Medium_Italic`, `inkTertiary`) — the same treatment as "Nothing logged yet today."
+- `summaryMono` is opt-in and set on the targets section only; a summary listing allergens or food names is prose and stays in Archivo.
+- First-time setup opens section 1 and each section ends in a "Next: …" accent link; returning to edit opens nothing, so the screen loads as a summary.
+- Motion: the chevron rotation and the body's fade/slide-in run on `Animated` (works on web); the height change additionally uses `LayoutAnimation` on native only, since react-native-web doesn't implement it.
+
+### Live figures over static fields
+
+The targets section computes as you type rather than waiting for a save to reveal a problem: whether the three macro targets actually add up to the calorie goal (4/4/9 cal per gram), and what one meal's share looks like at the current `meals_per_day`. When the macros don't add up, `accent` marks the line and a one-tap "Set carbs to Ng to make it add up →" link fixes it — the same warning role `accent` already plays on an over-goal `ProgressBar`, not a new hue. The target `NumberField`s also gained `+`/`–` steppers (50 cal, 5g, 1 meal) reusing `PortionStepper`'s bordered-square idiom; the body-stat fields (age/height/weight) deliberately don't have them, since those are typed once, not adjusted by feel.
+
 ### `TopNav` emphasis
 
 Making every nav link `accent` gave four equally-loud red labels and no sense of place. `TopNav` reuses the underline-tab idiom instead: the **current** section is `ink` with a 2px `accent` bottom rule; every other link is `inkSecondary` and turns `accent` on hover (web) or dims to `interaction.pressedOpacity` on press. `accent` is still the only saturated color, it just marks *where you are* and *what you're touching* rather than painting the whole row. Every link is always present on both screens (the current one included, marked rather than omitted) so the bar doesn't reshuffle between screens.
