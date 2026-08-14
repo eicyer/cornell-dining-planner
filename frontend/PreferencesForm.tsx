@@ -81,6 +81,32 @@ const SECTIONS = ['Daily targets', 'Diet & allergens', 'Eating style', 'Foods yo
 const round = (n: number) => Math.round(n).toLocaleString('en-US');
 const humanize = (s: string) => s.replace(/_/g, ' ');
 
+// height_cm/weight_kg are the only values the API ever sees (backend stays
+// metric — see backend/app/db/models.py) — ft/in/lb are a display-only input
+// mode for a US audience unlikely to know their stats in cm/kg offhand.
+const CM_PER_INCH = 2.54;
+const KG_PER_LB = 0.45359237;
+
+function cmToFeetInches(cm: number): { feet: number; inches: number } {
+  const totalInches = cm / CM_PER_INCH;
+  const feet = Math.floor(totalInches / 12);
+  const inches = Math.round(totalInches - feet * 12);
+  // Rounding inches up to 12 rolls into the next foot (e.g. 5'11.6" -> 6'0").
+  return inches === 12 ? { feet: feet + 1, inches: 0 } : { feet, inches };
+}
+
+function feetInchesToCm(feet: number, inches: number): number {
+  return Math.round((feet * 12 + inches) * CM_PER_INCH);
+}
+
+function kgToLb(kg: number): number {
+  return Math.round(kg / KG_PER_LB);
+}
+
+function lbToKg(lb: number): number {
+  return Math.round((lb * KG_PER_LB) * 10) / 10;
+}
+
 // A bordered 1px square, matching PortionStepper's existing +/- idiom rather
 // than introducing a second stepper look. 32pt + 10 hitSlop = 52pt tap target.
 function StepButton({ label, onPress, disabled }: { label: string; onPress: () => void; disabled?: boolean }) {
@@ -171,6 +197,47 @@ export default function PreferencesForm({
   const [calcResult, setCalcResult] = useState<RecommendedTargets | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Defaults to imperial — the intended audience is US college students, who
+  // are far more likely to know their height/weight in ft/in/lb than cm/kg.
+  // prefs.height_cm/weight_kg stay the single source of truth either way;
+  // these three only exist to display/edit that value in ft/in/lb terms.
+  const [unitSystem, setUnitSystem] = useState<'metric' | 'imperial'>('imperial');
+  const [heightFeet, setHeightFeet] = useState<number | null>(() =>
+    prefs.height_cm ? cmToFeetInches(prefs.height_cm).feet : null
+  );
+  const [heightInches, setHeightInches] = useState<number | null>(() =>
+    prefs.height_cm ? cmToFeetInches(prefs.height_cm).inches : null
+  );
+  const [weightLb, setWeightLb] = useState<number | null>(() => (prefs.weight_kg ? kgToLb(prefs.weight_kg) : null));
+
+  // Switching into imperial re-derives ft/in/lb from whatever's currently in
+  // prefs, so a value typed in cm/kg while on the metric tab shows up
+  // correctly converted rather than a stale snapshot from mount.
+  function switchUnitSystem(system: 'metric' | 'imperial') {
+    if (system === 'imperial') {
+      const { feet, inches } = prefs.height_cm ? cmToFeetInches(prefs.height_cm) : { feet: null, inches: null };
+      setHeightFeet(feet);
+      setHeightInches(inches);
+      setWeightLb(prefs.weight_kg ? kgToLb(prefs.weight_kg) : null);
+    }
+    setUnitSystem(system);
+  }
+
+  function handleHeightFeetChange(feet: number) {
+    setHeightFeet(feet);
+    setPrefs((p) => ({ ...p, height_cm: feetInchesToCm(feet, heightInches ?? 0) }));
+  }
+
+  function handleHeightInchesChange(inches: number) {
+    setHeightInches(inches);
+    setPrefs((p) => ({ ...p, height_cm: feetInchesToCm(heightFeet ?? 0, inches) }));
+  }
+
+  function handleWeightLbChange(lb: number) {
+    setWeightLb(lb);
+    setPrefs((p) => ({ ...p, weight_kg: lbToKg(lb) }));
+  }
 
   function toggle(list: string[], value: string): string[] {
     return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
@@ -337,20 +404,49 @@ export default function PreferencesForm({
             </Text>
 
             <NumberField label="Age" value={prefs.age} caption="13–100" onChange={(v) => setPrefs({ ...prefs, age: v })} />
-            <NumberField
-              label="Height (cm)"
-              decimal
-              value={prefs.height_cm}
-              caption="120–230 cm"
-              onChange={(v) => setPrefs({ ...prefs, height_cm: v })}
-            />
-            <NumberField
-              label="Weight (kg)"
-              decimal
-              value={prefs.weight_kg}
-              caption="30–300 kg"
-              onChange={(v) => setPrefs({ ...prefs, weight_kg: v })}
-            />
+
+            <Text style={styles.label}>Units</Text>
+            <View style={styles.tabRow}>
+              <Tab label="ft/in · lb" active={unitSystem === 'imperial'} onPress={() => switchUnitSystem('imperial')} />
+              <Tab label="cm · kg" active={unitSystem === 'metric'} onPress={() => switchUnitSystem('metric')} />
+            </View>
+
+            {unitSystem === 'imperial' ? (
+              <>
+                <View style={styles.heightRow}>
+                  <View style={styles.heightRowItem}>
+                    <NumberField label="Height (ft)" value={heightFeet} onChange={handleHeightFeetChange} />
+                  </View>
+                  <View style={styles.heightRowItem}>
+                    <NumberField label="Height (in)" value={heightInches} onChange={handleHeightInchesChange} />
+                  </View>
+                </View>
+                <Text style={styles.heightCaption}>3'11" – 7'6"</Text>
+                <NumberField
+                  label="Weight (lb)"
+                  value={weightLb}
+                  caption="66–661 lb"
+                  onChange={handleWeightLbChange}
+                />
+              </>
+            ) : (
+              <>
+                <NumberField
+                  label="Height (cm)"
+                  decimal
+                  value={prefs.height_cm}
+                  caption="120–230 cm"
+                  onChange={(v) => setPrefs({ ...prefs, height_cm: v })}
+                />
+                <NumberField
+                  label="Weight (kg)"
+                  decimal
+                  value={prefs.weight_kg}
+                  caption="30–300 kg"
+                  onChange={(v) => setPrefs({ ...prefs, weight_kg: v })}
+                />
+              </>
+            )}
 
             <Text style={styles.label}>Sex</Text>
             <Text style={styles.fieldCaption}>Used only for the calorie formula above.</Text>
@@ -620,6 +716,11 @@ const styles = StyleSheet.create({
   dailyTargetsLabel: { marginTop: space.xl },
   suggestion: { marginTop: -space.xs, marginBottom: space.lg },
   fieldCaption: { ...type.caption, marginTop: space.xs },
+  // Sits below the ft/in row instead of inside either NumberField (a single
+  // combined range reads better than repeating half of it per field) — needs
+  // its own bottom margin since it's outside NumberField's own `field` wrapper,
+  // which already supplies the gap above via its own marginBottom.
+  heightCaption: { ...type.caption, marginBottom: space.md },
   helperText: { ...type.body, color: colors.inkSecondary, marginBottom: space.md },
   numberRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   numberInput: {
@@ -662,6 +763,8 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   tabRow: { flexDirection: 'row', gap: space.lg, marginBottom: space.lg },
+  heightRow: { flexDirection: 'row', gap: space.md },
+  heightRowItem: { flex: 1 },
   recommendPanel: { marginBottom: space.sm },
   calcButton: { marginTop: space.md },
   calcResult: { ...type.mono, marginTop: space.md },
