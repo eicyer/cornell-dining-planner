@@ -1,0 +1,7 @@
+# Dev/test-only deps layered on top of requirements.in. Run
+#   pip-compile --generate-hashes --output-file=requirements-dev.txt requirements-dev.in
+# to regenerate requirements-dev.txt. Kept separate from requirements.in so
+# prod installs never pull test tooling.
+-r requirements.in
+pytest==8.3.3
+pytest-asyncio==0.24.0

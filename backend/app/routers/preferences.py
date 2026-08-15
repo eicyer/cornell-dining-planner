@@ -1,13 +1,15 @@
 import datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user
+from app.core.rate_limit import limiter
 from app.db.models import (
     ActivityLevel,
+    CraftedMealsCache,
     DietTag,
     Eatery,
     HealthGoal,
@@ -30,6 +32,16 @@ from app.services.tdee import recommend_targets
 from app.services.llm_enrichment import make_client as make_llm_client
 
 router = APIRouter()
+
+
+def _invalidate_crafted_meals_cache(db: Session, user_id: int) -> None:
+    """Drop this user's cached GET /menus/today/crafted result (see
+    docs/adr/0017) — call before every commit that changes UserPreference,
+    since preferences are the only thing that can make today's cached
+    result stale mid-day. Deletes across all dates, not just today, in case
+    the server's day has rolled over since the row was written."""
+    db.query(CraftedMealsCache).filter(CraftedMealsCache.user_id == user_id).delete()
+
 
 # Hard bounds enforced on every save, whether the targets came from the TDEE
 # recommender or were typed in by hand — "no extremes" has to hold either
@@ -162,8 +174,9 @@ def get_preferences(user: User = Depends(get_current_user), db: Session = Depend
 
 
 @router.put("/preferences", response_model=PreferencesOut)
+@limiter.limit("10/minute")
 async def put_preferences(
-    body: PreferencesIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+    request: Request, body: PreferencesIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     prefs = db.query(UserPreference).filter(UserPreference.user_id == user.id).one_or_none()
     if prefs is None:
@@ -195,6 +208,7 @@ async def put_preferences(
     prefs.liked_tags = liked_tags
     prefs.disliked_tags = disliked_tags
 
+    _invalidate_crafted_meals_cache(db, user.id)
     db.commit()
     db.refresh(prefs)
     return prefs
@@ -259,6 +273,7 @@ def submit_food_survey(
     prefs.liked_tags, prefs.disliked_tags = merge_tags(prefs.liked_tags, prefs.disliked_tags, liked, disliked)
     prefs.food_survey_completed = True
 
+    _invalidate_crafted_meals_cache(db, user.id)
     db.commit()
     db.refresh(prefs)
     return prefs
@@ -351,6 +366,7 @@ def submit_station_survey(
     )
     prefs.liked_tags, prefs.disliked_tags = merge_tags(prefs.liked_tags, prefs.disliked_tags, liked, disliked)
 
+    _invalidate_crafted_meals_cache(db, user.id)
     db.commit()
     db.refresh(prefs)
     return prefs

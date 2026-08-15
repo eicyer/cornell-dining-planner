@@ -1,9 +1,10 @@
-import { Platform } from 'react-native';
-
-// Web (browser) can reach the backend via localhost. A physical device or
-// simulator can't — swap this for your Mac's LAN IP (`ipconfig getifaddr en0`)
-// plus :8001 when testing on iOS.
-export const API_BASE = Platform.OS === 'web' ? 'http://localhost:8001' : 'http://localhost:8001';
+// Set via EXPO_PUBLIC_API_BASE (see frontend/.env.example) — Expo inlines
+// EXPO_PUBLIC_* vars at build time, no extra config needed. Falls back to
+// localhost for local dev. Web (browser) can reach the backend via
+// localhost directly; a physical device or simulator can't — swap the env
+// var for your Mac's LAN IP (`ipconfig getifaddr en0`) plus :8001 when
+// testing on iOS.
+export const API_BASE = process.env.EXPO_PUBLIC_API_BASE || 'http://localhost:8001';
 
 // Mirrors app/services/llm_enrichment.py — keep in sync manually, there's no
 // shared schema between the Python backend and this TS frontend.
@@ -210,6 +211,16 @@ export async function getCraftedMealsToday(): Promise<EateryCrafted[]> {
   return res.json();
 }
 
+// A single best-pick preview for a meal period later today at this eatery —
+// see EateryCraftedOptions.next_meals. Unlike crafted_meals (several ranked
+// options for "now"), this is just a preview of what's coming, not the
+// primary pick-one interaction.
+export type NextMeal = {
+  meal_period: string;
+  crafted_meal: CraftedMeal | null;
+  reason_unavailable: string | null;
+};
+
 // Up to a few ranked meal options for one eatery — see the eatery-detail
 // "3 meal options" flow. Unlike EateryCrafted.crafted_meal (the single
 // today-list pick), crafted_meals here can include lower-ranked candidates
@@ -221,6 +232,9 @@ export type EateryCraftedOptions = {
   meal_period: string | null;
   crafted_meals: CraftedMeal[];
   reason_unavailable: string | null;
+  // Later meal periods still being served today at this eatery, in serving
+  // order — empty once the current pick is the last period of the day.
+  next_meals: NextMeal[];
 };
 
 export async function getCraftedMealsForEatery(eateryId: number): Promise<EateryCraftedOptions> {

@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: cornell_dining
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5433/cornell_dining
+      SESSION_SECRET: ci-only-not-a-real-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+          cache-dependency-path: backend/requirements-dev.txt
+      - name: Install dependencies
+        run: pip install --require-hashes -r requirements-dev.txt
+      - name: Run migrations
+        run: alembic upgrade head
+      - name: Run security regression tests
+        run: python -m pytest tests/security/ -v
+      - name: pip-audit
+        run: pip install pip-audit && pip-audit -r requirements.txt
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: npm audit
+        # Non-blocking for now: current findings are all in Expo/Metro build
+        # tooling (0 critical) with no fix short of a semver-major Expo/RN
+        # downgrade — see README.md "Security hardening". Dependabot proposes
+        # upgrades as reviewed PRs instead of failing CI on them.
+        run: npm audit --audit-level=critical
+
+  config-sanity:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install --require-hashes -r requirements.txt
+      - name: Refuses to boot with production env + dev-default secrets
+        run: |
+          python -c "
+          import os
+          os.environ['ENVIRONMENT'] = 'production'
+          os.environ['SESSION_SECRET'] = 'dev-only-change-me'
+          try:
+              from app.core.config import Settings
+              Settings(_env_file=None)
+              raise SystemExit('FAIL: Settings should have refused to boot')
+          except RuntimeError:
+              print('OK: refused to boot with insecure production config')
+          "
+      - name: Boots cleanly with production env + real-looking secrets
+        run: |
+          python -c "
+          import os
+          os.environ['ENVIRONMENT'] = 'production'
+          os.environ['SESSION_SECRET'] = 'a-real-looking-secret-not-the-dev-default'
+          os.environ['DATABASE_URL'] = 'postgresql+psycopg2://user:pw@prod-host:5432/db'
+          os.environ['GOOGLE_CLIENT_ID'] = 'fake-client-id'
+          os.environ['GOOGLE_CLIENT_SECRET'] = 'fake-client-secret'
+          os.environ['FRONTEND_URL'] = 'https://app.example.com'
+          from app.core.config import Settings
+          Settings(_env_file=None)
+          print('OK: boots with production-shaped config')
+          "

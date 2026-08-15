@@ -4,6 +4,8 @@ See `CONTEXT.md` for domain vocabulary and `docs/adr/` for architecture decision
 
 ## Local dev setup
 
+Copy `.env.example` to `.env.local` (root) and fill in real values — that file documents every var the backend reads, including which ones are required before `ENVIRONMENT=production` will boot (see `backend/app/core/config.py`).
+
 Ports are non-default on this machine because 5432 and 8000 are already taken by another project (`nabiz-kargo-db-1`, OrbStack) — don't reuse those.
 
 ### Backend (FastAPI)
@@ -70,3 +72,15 @@ The backend must be running with CORS enabled for `http://localhost:8081` (alrea
 **Phase 3** (manual builder + logging): `app/routers/logged_meals.py` — `POST /logged-meals` accepts `{eatery_id, meal_period, items: [{name, grams}]}` and always recomputes nutrition server-side from cached per-100g data (never trusts client-sent numbers, same principle as crafting/enrichment); items must actually be on that eatery's menu for that date/meal_period, enforcing the dining-hall-only scope from `docs/adr/0004`. `PATCH /logged-meals/{id}` sets the thumbs up/down `liked` field (the schema already had it, unused until now). `GET /logged-meals` lists a day's log; `GET /logged-meals/summary` returns daily totals vs. goals over a date range. Frontend: `EateryDetailScreen.tsx` is the manual "MyFitnessPal-style" builder (per-item gram entry, live running totals, tap Log Meal); `CraftedMealsList.tsx` got a one-tap "Log this meal" button per crafted meal; `DiaryScreen.tsx` shows today's logged meals with rating buttons, a progress-bar view of today vs. goals, and the last 7 days. Verified end to end against live data — manual logging, menu-membership validation (rejects items not on that day's menu), rating, and the summary aggregation all confirmed correct.
 
 See `docs/adr/` for the phased plan (`0006-stack-migration-from-nextjs.md` has the most recent context). Not yet deployed anywhere — Railway/Render deployment needs your account, so that's a manual step when you're ready.
+
+## Deploying
+
+`backend/Dockerfile` builds the API as a non-root container (`docker build -t cornell-dining-backend backend`); every secret (`SESSION_SECRET`, `DATABASE_URL`, `GOOGLE_CLIENT_ID`/`SECRET`, `ANTHROPIC_API_KEY`, `USDA_API_KEY`, `CORS_ALLOWED_ORIGINS`, `ALLOWED_HOSTS`, `ENVIRONMENT=production`) is set at the hosting platform's env-var UI, never baked into the image — `.env.example` is the checklist. Before flipping DNS live:
+
+1. **Same-site topology**: put the frontend and backend on the same registrable domain (e.g. `app.<domain>` / `api.<domain>`) so `SameSite=Lax` session cookies keep working the way they do on `localhost` today — see `docs/adr/0018-session-cookie-and-csrf-hardening.md`.
+2. Confirm HTTPS termination in front of the backend, and that `Set-Cookie` on `/auth/callback` actually carries `Secure` against the real prod URL (it's gated on `ENVIRONMENT=production`, see `app/main.py`).
+3. Confirm `backend/tests/security/` and `pip-audit`/`npm audit` are green in CI (`.github/workflows/ci.yml`) on the deploy branch.
+4. Update the Google OAuth app's authorized redirect URI from `http://localhost:8001/auth/callback` to the production callback URL.
+5. Deploy to a Railway/Render preview/staging environment first and run through 1–4 against that URL before promoting to production.
+
+**Security hardening** (`docs/adr/0018-session-cookie-and-csrf-hardening.md`): fail-fast production config, session-cookie/CSRF hardening, env-driven CORS + `TrustedHostMiddleware`, CSP/security-headers middleware (nonce-based, no `unsafe-inline`), rate limiting on the OAuth and LLM-backed routes, bounded LLM-tag output, a `backend/tests/security/` regression suite, Dependabot, and a hash-pinned backend lockfile (`backend/requirements.in` → `requirements.txt`). Two known, accepted-risk gaps, both documented rather than silently left: `starlette` 0.38.6 has unpatched CVEs but is capped by `fastapi==0.115.0`'s own `<0.39.0` constraint — fixing it means upgrading FastAPI, deferred as its own change (see `backend/requirements.in`); and `frontend/package-lock.json` carries ~18 `npm audit` findings (0 critical) confined to Expo/Metro's build tooling (image parsing, dev-server deps), whose only fixes are a semver-major Expo/React Native downgrade — left for Dependabot to propose as a reviewed PR rather than force-applied here.

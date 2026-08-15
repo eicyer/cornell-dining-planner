@@ -49,6 +49,9 @@ export default function EateryDetailScreen({
   const [options, setOptions] = useState<EateryCraftedOptions | null>(null);
   const [optionsError, setOptionsError] = useState<string | null>(null);
   const [optionLogStatus, setOptionLogStatus] = useState<Record<number, LogStatus>>({});
+  // Keyed by meal_period rather than index — next_meals has at most one
+  // entry per period, and the period name is the natural stable key.
+  const [nextMealLogStatus, setNextMealLogStatus] = useState<Record<string, LogStatus>>({});
 
   // Loaded separately from `eatery` (which only has the raw menu) — see the
   // "3 meal options" eatery-detail flow. Distinct request from the
@@ -78,6 +81,18 @@ export default function EateryDetailScreen({
       onLogged(logged);
     } catch {
       setOptionLogStatus((s) => ({ ...s, [index]: 'error' }));
+    }
+  }
+
+  async function handleLogNextMeal(mealPeriod: string, items: { name: string; grams: number }[]) {
+    setNextMealLogStatus((s) => ({ ...s, [mealPeriod]: 'saving' }));
+    try {
+      const logged = await logMeal(eatery.id, mealPeriod, items);
+      setNextMealLogStatus((s) => ({ ...s, [mealPeriod]: 'done' }));
+      success();
+      onLogged(logged);
+    } catch {
+      setNextMealLogStatus((s) => ({ ...s, [mealPeriod]: 'error' }));
     }
   }
 
@@ -168,6 +183,30 @@ export default function EateryDetailScreen({
           </View>
         )}
 
+        {options && options.next_meals.length > 0 && (
+          <View style={styles.options}>
+            <Text style={styles.sectionTitle}>Coming up today</Text>
+            {options.next_meals.map((next) =>
+              next.crafted_meal ? (
+                <View key={next.meal_period} style={styles.optionCard}>
+                  <CraftedMealCard
+                    meal={next.crafted_meal}
+                    mealPeriod={next.meal_period}
+                    perMealTarget={perMealTarget}
+                    status={nextMealLogStatus[next.meal_period] ?? 'idle'}
+                    onLog={(items) => handleLogNextMeal(next.meal_period, items)}
+                  />
+                </View>
+              ) : (
+                <View key={next.meal_period} style={styles.optionCard}>
+                  <Text style={styles.mealPeriodLabel}>{next.meal_period}</Text>
+                  <Text style={styles.unavailable}>{next.reason_unavailable ?? 'No meal options available'}</Text>
+                </View>
+              )
+            )}
+          </View>
+        )}
+
         {!showFullMenu && (
           <Button
             label="+ Add another item"
@@ -248,6 +287,7 @@ const styles = StyleSheet.create({
     color: colors.inkSecondary,
     marginBottom: space.lg,
   },
+  mealPeriodLabel: { ...type.kicker, marginBottom: space.xs },
   options: { marginBottom: space.md },
   sectionTitle: {
     ...type.kicker,

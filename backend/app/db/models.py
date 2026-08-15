@@ -225,6 +225,29 @@ class DietTag(Base):
     )
 
 
+class CraftedMealsCache(Base):
+    """Cached response body of GET /menus/today/crafted for one user on one
+    date — see docs/adr/0017. The crafted-meals computation re-runs the
+    optimizer and an LLM polish call per eatery, so without this every page
+    load/refresh re-does that work even though the inputs (today's menu +
+    this user's preferences) are unchanged between requests. Invalidated
+    explicitly wherever UserPreference is written (app.routers.preferences)
+    rather than on a TTL, since preference edits are the only thing that can
+    change the result mid-day."""
+
+    __tablename__ = "crafted_meals_cache"
+    __table_args__ = (UniqueConstraint("user_id", "date"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    date: Mapped[datetime.date] = mapped_column(Date)
+    payload: Mapped[list] = mapped_column(JSON)
+
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow
+    )
+
+
 class LoggedMeal(Base):
     """Dining-hall food only — not a general food diary. See docs/adr/0004."""
 
