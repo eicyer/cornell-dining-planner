@@ -23,12 +23,17 @@ templates = Jinja2Templates(directory=str(Path(__file__).resolve().parents[1] / 
 
 @router.get("/admin", response_class=HTMLResponse)
 def admin_page(request: Request, user: User | None = Depends(get_current_user_optional)):
+    # Set by SecurityHeadersMiddleware — lets the inline <style>/<script>
+    # tags below satisfy a strict CSP without 'unsafe-inline'.
+    nonce = request.state.csp_nonce
     if user is None:
-        return templates.TemplateResponse(request, "admin/login.html", status_code=401)
+        return templates.TemplateResponse(request, "admin/login.html", {"nonce": nonce}, status_code=401)
     if user.email != settings.admin_email:
         return templates.TemplateResponse(
-            request, "admin/forbidden.html", {"email": user.email}, status_code=403
+            request, "admin/forbidden.html", {"email": user.email, "nonce": nonce}, status_code=403
         )
     return templates.TemplateResponse(
-        request, "admin/panel.html", {"email": user.email, "diet_tags": DIET_TAGS, "allergens": ALLERGENS}
+        request,
+        "admin/panel.html",
+        {"email": user.email, "diet_tags": DIET_TAGS, "allergens": ALLERGENS, "nonce": nonce},
     )

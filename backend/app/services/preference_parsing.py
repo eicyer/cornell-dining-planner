@@ -27,6 +27,28 @@ def _extract_json(text: str) -> dict:
     return json.loads(text)
 
 
+# Bounds only, not a fixed vocabulary — free-form fuzzy tags are the
+# intentional design here (see module docstring). This just keeps a
+# malformed or runaway LLM response from being stored/echoed unbounded.
+MAX_TAGS = 20
+MAX_TAG_LENGTH = 40
+
+
+def _clean_tags(raw: object) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    cleaned: list[str] = []
+    for tag in raw:
+        if not isinstance(tag, str):
+            continue
+        tag = tag.strip().lower()[:MAX_TAG_LENGTH]
+        if tag:
+            cleaned.append(tag)
+        if len(cleaned) >= MAX_TAGS:
+            break
+    return cleaned
+
+
 async def parse_preferences(
     client: AsyncAnthropic, liked_text: str | None, disliked_text: str | None
 ) -> tuple[list[str], list[str]]:
@@ -56,7 +78,7 @@ Keep each tag to 1-2 words (e.g. "chicken", "spicy", "mushroom", "italian"), not
         )
         text = "".join(block.text for block in response.content if block.type == "text")
         data = _extract_json(text)
-        return list(data.get("liked_tags", [])), list(data.get("disliked_tags", []))
+        return _clean_tags(data.get("liked_tags")), _clean_tags(data.get("disliked_tags"))
     except Exception:
         logger.exception("Preference parsing failed for liked=%r disliked=%r", liked_text, disliked_text)
         return [], []

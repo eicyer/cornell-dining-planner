@@ -12,11 +12,12 @@ from __future__ import annotations
 import datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_admin
+from app.core.rate_limit import limiter
 from app.db.models import DietTag, NutritionMatch, NutritionSource, User
 from app.db.session import get_db
 from app.services.llm_enrichment import ALLERGENS, DIET_TAGS
@@ -212,7 +213,9 @@ def get_food_detail(
 
 
 @router.put("/foods/detail", response_model=FoodOut)
+@limiter.limit("30/minute")
 def update_food_detail(
+    request: Request,
     body: FoodUpdateIn,
     db: Session = Depends(get_db),
     _admin: User = Depends(get_current_admin),

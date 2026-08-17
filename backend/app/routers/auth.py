@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.deps import get_current_user
+from app.core.rate_limit import limiter
 from app.db.models import User
 from app.db.session import get_db
 
@@ -26,6 +27,7 @@ ADMIN_NEXT_PATH = "/admin"
 
 
 @router.get("/login")
+@limiter.limit("10/minute")
 async def login(request: Request, next: str | None = None):
     if next == ADMIN_NEXT_PATH:
         request.session["post_login_redirect"] = ADMIN_NEXT_PATH
@@ -34,6 +36,7 @@ async def login(request: Request, next: str | None = None):
 
 
 @router.get("/callback", name="auth_callback")
+@limiter.limit("10/minute")
 async def auth_callback(request: Request, db: Session = Depends(get_db)):
     token = await oauth.google.authorize_access_token(request)
     userinfo = token.get("userinfo")
@@ -47,8 +50,11 @@ async def auth_callback(request: Request, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(user)
 
-    request.session["user_id"] = user.id
     next_path = request.session.pop("post_login_redirect", None)
+    # Drop any pre-login session state before establishing the authenticated
+    # one — closes a session-fixation window. See docs/adr/0018.
+    request.session.clear()
+    request.session["user_id"] = user.id
     return RedirectResponse(url=next_path or settings.frontend_url)
 
 

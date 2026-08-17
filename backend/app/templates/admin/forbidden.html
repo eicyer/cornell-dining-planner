@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;0,700;1,500&family=Archivo:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
-<style>
+<style nonce="{{ nonce }}">
   :root {
     --paper: #F7F3EA;
     --ink: #1C1A17;
@@ -80,7 +80,12 @@
     <h1>This account can't access the admin panel.</h1>
     <p>You're signed in as</p>
     <div class="email">{{ email }}</div>
-    <p><button onclick="fetch('/auth/logout', {method: 'POST', credentials: 'include'}).then(() => location.href = '/admin')">Log out and switch accounts</button></p>
+    <p><button id="logoutBtn">Log out and switch accounts</button></p>
   </div>
+<script nonce="{{ nonce }}">
+document.getElementById('logoutBtn').addEventListener('click', () => {
+  fetch('/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { location.href = '/admin'; });
+});
+</script>
 </body>
 </html>
