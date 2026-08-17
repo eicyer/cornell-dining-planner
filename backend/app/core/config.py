@@ -24,6 +24,13 @@ class Settings(BaseSettings):
     session_secret: str = DEV_SESSION_SECRET
     frontend_url: str = "http://localhost:8081"
 
+    # "lax" assumes frontend and backend share a registrable domain (the
+    # default, hardened topology from docs/adr/0018). Set to "none" only for
+    # a cross-site deploy (frontend and backend on different domains) — the
+    # browser then requires the cookie to also be Secure, which is already
+    # tied to ENVIRONMENT=production below.
+    session_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
+
     anthropic_api_key: str = ""
     usda_api_key: str = ""
 

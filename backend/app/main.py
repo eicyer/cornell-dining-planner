@@ -21,7 +21,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.session_secret,
-    same_site="lax",
+    same_site=settings.session_cookie_samesite,
     https_only=settings.environment == "production",
     max_age=14 * 24 * 60 * 60,  # 14 days
 )
