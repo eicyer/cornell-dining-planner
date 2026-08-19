@@ -125,7 +125,7 @@ export async function recommendTargets(input: RecommendTargetsInput): Promise<Re
 
 // --- Food Preference Survey (onboarding "would you rather" quiz) ---
 
-export type FoodSurveyItem = { id: string; name: string };
+export type FoodSurveyItem = { id: string; name: string; image_url?: string | null };
 export type FoodSurveyPair = { id: string; item_a: FoodSurveyItem; item_b: FoodSurveyItem };
 export type FoodSurveyChoice = 'a' | 'b' | 'skip';
 export type FoodSurveyResponse = { pair_id: string; choice: FoodSurveyChoice };

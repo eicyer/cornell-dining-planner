@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   FoodSurveyChoice,
   FoodSurveyPair,
@@ -12,9 +12,18 @@ import { BarTrack } from './components/ProgressBar';
 import { selection } from './haptics';
 import { colors, space, type } from './theme';
 
-function Option({ label, onChoose }: { label: string; onChoose: () => void }) {
+function Option({
+  label,
+  imageUrl,
+  onChoose,
+}: {
+  label: string;
+  imageUrl?: string | null;
+  onChoose: () => void;
+}) {
   return (
     <Pressable onPress={onChoose} style={({ pressed }) => [styles.option, pressed && styles.optionPressed]}>
+      {imageUrl ? <Image source={{ uri: imageUrl }} style={styles.optionImage} resizeMode="cover" /> : null}
       <Text style={styles.optionText}>{label}</Text>
     </Pressable>
   );
@@ -117,9 +126,19 @@ export default function FoodSurveyScreen({
       <Text style={styles.title}>Which would you rather eat right now?</Text>
       <Text style={styles.subtitle}>Tap the one you're actually craving — it sharpens what we suggest for you.</Text>
 
-      <Option key={`${pair.id}-a`} label={pair.item_a.name} onChoose={() => choose('a')} />
+      <Option
+        key={`${pair.id}-a`}
+        label={pair.item_a.name}
+        imageUrl={pair.item_a.image_url}
+        onChoose={() => choose('a')}
+      />
       <Text style={styles.orLabel}>or</Text>
-      <Option key={`${pair.id}-b`} label={pair.item_b.name} onChoose={() => choose('b')} />
+      <Option
+        key={`${pair.id}-b`}
+        label={pair.item_b.name}
+        imageUrl={pair.item_b.image_url}
+        onChoose={() => choose('b')}
+      />
 
       <Pressable onPress={() => choose('skip')} style={styles.skipRow} hitSlop={6}>
         <Text style={styles.skipLink}>Skip — no preference</Text>
@@ -153,6 +172,13 @@ const styles = StyleSheet.create({
   },
   optionPressed: {
     borderBottomColor: colors.accent,
+  },
+  optionImage: {
+    width: '100%',
+    height: 220,
+    borderRadius: 12,
+    marginBottom: space.sm,
+    backgroundColor: colors.hairline,
   },
   optionText: {
     fontFamily: 'Fraunces_600SemiBold',
