@@ -220,6 +220,7 @@ async def put_preferences(
 class FoodSurveyItemOut(BaseModel):
     id: str
     name: str
+    image_url: str | None = None
 
 
 class FoodSurveyPairOut(BaseModel):
@@ -256,8 +257,8 @@ def get_food_survey(user: User = Depends(get_current_user), db: Session = Depend
         pairs=[
             FoodSurveyPairOut(
                 id=p.id,
-                item_a=FoodSurveyItemOut(id=p.item_a.id, name=p.item_a.name),
-                item_b=FoodSurveyItemOut(id=p.item_b.id, name=p.item_b.name),
+                item_a=FoodSurveyItemOut(id=p.item_a.id, name=p.item_a.name, image_url=p.item_a.image_url),
+                item_b=FoodSurveyItemOut(id=p.item_b.id, name=p.item_b.name, image_url=p.item_b.image_url),
             )
             for p in pairs
         ]
