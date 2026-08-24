@@ -1,5 +1,6 @@
 import datetime
 from itertools import groupby
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -9,6 +10,12 @@ from app.db.models import DietTag, Eatery, MenuEvent, MenuItem, NutritionMatch
 from app.db.session import get_db
 
 router = APIRouter()
+
+# Cornell's dining feed reports operating dates in Ithaca's local time, so "today"
+# must be computed in that zone rather than the server's — otherwise UTC hosts
+# roll over to the next calendar day hours before Ithaca does, and every eatery
+# looks closed until midnight Eastern.
+ITHACA_TZ = ZoneInfo("America/New_York")
 
 
 class NutritionOut(BaseModel):
@@ -49,7 +56,7 @@ class EateryOut(BaseModel):
 
 @router.get("/menus/today", response_model=list[EateryOut])
 def menus_today(db: Session = Depends(get_db)) -> list[EateryOut]:
-    today = datetime.date.today()
+    today = datetime.datetime.now(ITHACA_TZ).date()
 
     nutrition_by_name = {n.item_name: n for n in db.query(NutritionMatch).all()}
     diet_by_name = {d.item_name: d for d in db.query(DietTag).all()}
