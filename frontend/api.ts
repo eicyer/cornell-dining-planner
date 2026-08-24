@@ -1,8 +1,13 @@
 // Set via EXPO_PUBLIC_API_BASE (see frontend/.env.example) — Expo inlines
 // EXPO_PUBLIC_* vars at build time, no extra config needed. Falls back to
-// localhost for local dev. Web (browser) can reach the backend via
-// localhost directly; a physical device or simulator can't — swap the env
-// var for your Mac's LAN IP (`ipconfig getifaddr en0`) plus :8001 when
+// localhost for local dev — must stay "localhost" (not 127.0.0.1) since
+// Google OAuth's registered redirect URI is http://localhost:8001/auth/callback
+// and the backend derives its redirect_uri from the request's Host header
+// (see auth.py's request.url_for), so any mismatch here breaks sign-in.
+// The backend itself must bind both loopback addresses (see run instructions)
+// since "localhost" can resolve to the IPv6 loopback first on some machines.
+// A physical device or simulator can't reach localhost either way — swap the
+// env var for your Mac's LAN IP (`ipconfig getifaddr en0`) plus :8001 when
 // testing on iOS.
 export const API_BASE = process.env.EXPO_PUBLIC_API_BASE || 'http://localhost:8001';
 
