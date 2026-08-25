@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.core.clock import ithaca_now, ithaca_today
 from app.core.deps import get_current_user
 from app.core.rate_limit import limiter
 from app.db.models import CraftedMealsCache, DietTag, Eatery, MenuEvent, MenuItem, NutritionMatch, User, UserPreference
@@ -42,16 +43,25 @@ MEAL_PERIOD_PREFERENCE_BY_HOUR = [
 # order, rather than dropped.
 MEAL_PERIOD_ORDER = ["Breakfast", "Brunch", "Lunch", "Late Lunch", "Dinner"]
 
+# How many ranked candidates the eatery-detail screen offers as options.
+# Deliberately shows all of them (not just the single best fit, like the
+# today-list summary does) — a user tapping into one dining hall wants
+# choices to pick from, even if #2/#3 fit their macro target or Soft
+# Preferences less well than #1 would.
+N_EATERY_DETAIL_CANDIDATES = 3
+
 
 def pick_meal_period(available: list[str]) -> str | None:
-    """Returns the period matching *this hour*, or None if nothing being
-    served today fits — e.g. an eatery whose only event today is Dinner
-    shouldn't be labeled "Dinner" at 9am just because that's all there is.
-    Callers that want "whatever's on offer" regardless of hour should use
-    next_meal_periods(available, None) instead of guessing here."""
+    """Returns the period matching *this hour* (Ithaca time — see
+    app.core.clock — since that's the zone Cornell's own serving hours are
+    in), or None if nothing being served today fits — e.g. an eatery whose
+    only event today is Dinner shouldn't be labeled "Dinner" at 9am just
+    because that's all there is. Callers that want "whatever's on offer"
+    regardless of hour should use next_meal_periods(available, None)
+    instead of guessing here."""
     if not available:
         return None
-    hour = datetime.datetime.now().hour
+    hour = ithaca_now().hour
     preference = next(pref for cutoff, pref in MEAL_PERIOD_PREFERENCE_BY_HOUR if hour < cutoff)
     for name in preference:
         if name in available:
@@ -136,12 +146,27 @@ class EateryCraftedOptionsOut(BaseModel):
     next_meals: list[NextMealOut] = []
 
 
-# How many ranked candidates the eatery-detail screen offers as options.
-# Deliberately shows all of them (not just the single best fit, like the
-# today-list summary does) — a user tapping into one dining hall wants
-# choices to pick from, even if #2/#3 fit their macro target or Soft
-# Preferences less well than #1 would.
-N_EATERY_DETAIL_CANDIDATES = 3
+# --- Daily precompute -------------------------------------------------
+#
+# One eatery's meal-crafting result for a single meal period it serves
+# today — both shapes the API needs from it (a single best pick for the
+# today-list/next-meals preview, and a ranked options list for the
+# eatery-detail screen), computed once and cached.
+class PeriodCraftedOut(BaseModel):
+    reason_unavailable: str | None = None
+    single: CraftedMealOut | None = None
+    options: list[CraftedMealOut] = []
+
+
+class EateryDailyCraftedOut(BaseModel):
+    id: int
+    name: str
+    campus_area: str | None
+    # Meal period name -> that period's crafted result. Only periods the
+    # eatery actually has a MenuEvent for today appear here — an absent key
+    # (not an empty/closed entry) is how "this eatery doesn't serve
+    # breakfast at all" is distinguished from "served breakfast, nothing fit".
+    periods: dict[str, PeriodCraftedOut]
 
 
 def _build_item_nutritions(
@@ -187,8 +212,7 @@ def _ranked_candidates_for_menu_event(
 ) -> tuple[list[MealCandidate], str | None]:
     """Returns (ranked_candidates, reason_unavailable) — exactly one is
     populated. Shared by every caller that builds a candidate set for one
-    specific menu event (a single eatery + meal period), whether that's
-    "now" or a later period today, so they can't drift on how it's built."""
+    specific menu event (a single eatery + meal period)."""
     menu_items = db.query(MenuItem).filter(MenuItem.menu_event_id == menu_event.id).all()
     item_nutritions = _build_item_nutritions(menu_items, nutrition_by_name, diet_by_name)
 
@@ -200,32 +224,106 @@ def _ranked_candidates_for_menu_event(
     return ranked, None
 
 
-def _ranked_candidates_for_eatery(
-    eatery: Eatery,
-    today: datetime.date,
-    target: Target,
-    constraints: HardConstraints,
-    nutrition_by_name: dict[str, NutritionMatch],
-    diet_by_name: dict[str, DietTag],
-    prefs: UserPreference,
-    db: Session,
-    n_candidates: int,
-) -> tuple[str | None, list[MealCandidate], str | None]:
-    """Returns (meal_period, ranked_candidates, reason_unavailable) for the
-    *current* meal period — exactly one of ranked_candidates/reason_unavailable
-    is populated. Shared by both the today-list summary and the eatery-detail
-    options endpoints so they can't drift on how "now" is picked."""
-    menu_events = db.query(MenuEvent).filter(MenuEvent.eatery_id == eatery.id, MenuEvent.date == today).all()
-    periods = [e.meal_period for e in menu_events]
-    meal_period = pick_meal_period(periods)
-    if meal_period is None:
-        return None, [], closed_reason(periods)
-
-    menu_event = next(e for e in menu_events if e.meal_period == meal_period)
-    ranked, reason = _ranked_candidates_for_menu_event(
-        menu_event, target, constraints, nutrition_by_name, diet_by_name, prefs, db, n_candidates
+def _crafted_meal_out(ranked: list[MealCandidate], index: int, name: str, rationale: str) -> CraftedMealOut:
+    chosen = ranked[index]
+    return CraftedMealOut(
+        name=name, rationale=rationale, items=[CraftedItemOut(**vars(i)) for i in chosen.items], totals=chosen.totals
     )
-    return meal_period, ranked, reason
+
+
+async def build_daily_crafted(user: User, prefs: UserPreference, today: datetime.date, db: Session) -> list[EateryDailyCraftedOut]:
+    """Computes every meal-crafting result this user could need for the
+    whole day, across every eatery and every meal period each one actually
+    serves today — not just whatever period is "current" right now. This is
+    the expensive step (optimizer + two LLM polish calls per eatery/period);
+    doing it once per user per day (via the daily cron, see
+    app.jobs.craft_daily_meals) instead of per-request is what lets the API
+    endpoints below just slice the result by wall-clock time for free.
+    Endpoints also call this directly as a same-day cache-miss fallback, so
+    a missed/delayed cron run degrades to "slow once" rather than broken."""
+    nutrition_by_name = {n.item_name: n for n in db.query(NutritionMatch).all()}
+    diet_by_name = {d.item_name: d for d in db.query(DietTag).all()}
+    target = per_meal_target(prefs.calorie_goal, prefs.protein_goal_g, prefs.carb_goal_g, prefs.fat_goal_g, prefs.meals_per_day)
+    constraints = HardConstraints(required_diet_tags=prefs.diet_restrictions, excluded_allergens=prefs.allergens)
+
+    eateries = db.query(Eatery).filter(Eatery.eatery_type == "dining room").order_by(Eatery.name).all()
+    llm_client = make_llm_client()
+
+    # (eatery, meal_event) for every period every eatery serves today.
+    work: list[tuple[Eatery, MenuEvent]] = []
+    for eatery in eateries:
+        menu_events = db.query(MenuEvent).filter(MenuEvent.eatery_id == eatery.id, MenuEvent.date == today).all()
+        work.extend((eatery, menu_event) for menu_event in menu_events)
+
+    # Candidate generation is local (DB + in-memory ranking, no network
+    # calls), so it stays a plain loop.
+    ranked_or_reason = {
+        (eatery.id, menu_event.meal_period): _ranked_candidates_for_menu_event(
+            menu_event, target, constraints, nutrition_by_name, diet_by_name, prefs, db,
+            n_candidates=N_EATERY_DETAIL_CANDIDATES,
+        )
+        for eatery, menu_event in work
+    }
+    keys_needing_polish = [key for key, (ranked, reason) in ranked_or_reason.items() if reason is None]
+
+    # The polish steps are the only network I/O — run every key's two calls
+    # (single pick + full options list) concurrently so a cache build costs
+    # one LLM round trip's worth of wall-clock time, not one per eatery/period.
+    single_results, options_results = await asyncio.gather(
+        asyncio.gather(
+            *[polish_meal(llm_client, ranked_or_reason[k][0], target, prefs.liked_tags, prefs.disliked_tags) for k in keys_needing_polish]
+        ),
+        asyncio.gather(
+            *[polish_meals(llm_client, ranked_or_reason[k][0], target, prefs.liked_tags, prefs.disliked_tags) for k in keys_needing_polish]
+        ),
+    )
+    single_by_key = dict(zip(keys_needing_polish, single_results))
+    options_by_key = dict(zip(keys_needing_polish, options_results))
+
+    out: list[EateryDailyCraftedOut] = []
+    for eatery in eateries:
+        periods: dict[str, PeriodCraftedOut] = {}
+        for eatery_id, meal_period in ranked_or_reason:
+            if eatery_id != eatery.id:
+                continue
+            ranked, reason = ranked_or_reason[(eatery_id, meal_period)]
+            if reason is not None:
+                periods[meal_period] = PeriodCraftedOut(reason_unavailable=reason)
+                continue
+
+            key = (eatery_id, meal_period)
+            polished_single = single_by_key[key]
+            single = _crafted_meal_out(ranked, polished_single.candidate_index, polished_single.name, polished_single.rationale)
+            options = [
+                _crafted_meal_out(ranked, i, p.name, p.rationale) for i, p in enumerate(options_by_key[key])
+            ]
+            periods[meal_period] = PeriodCraftedOut(single=single, options=options)
+
+        out.append(EateryDailyCraftedOut(id=eatery.id, name=eatery.name, campus_area=eatery.campus_area, periods=periods))
+
+    return out
+
+
+async def get_or_build_daily_crafted(
+    user: User, prefs: UserPreference, today: datetime.date, db: Session
+) -> list[EateryDailyCraftedOut]:
+    # Same menu + same preferences => same result, so a same-day repeat
+    # request skips the optimizer and every LLM call entirely — see
+    # docs/adr/0017. Invalidated wherever UserPreference is written
+    # (app.routers.preferences), so a stale hit here can't outlive an edit.
+    # Normally populated by the daily cron (app.jobs.craft_daily_meals)
+    # rather than by this lazy path — this is the fallback for a day the
+    # cron hasn't run yet.
+    cached = (
+        db.query(CraftedMealsCache).filter(CraftedMealsCache.user_id == user.id, CraftedMealsCache.date == today).one_or_none()
+    )
+    if cached is not None:
+        return [EateryDailyCraftedOut.model_validate(e) for e in cached.payload]
+
+    daily = await build_daily_crafted(user, prefs, today, db)
+    db.add(CraftedMealsCache(user_id=user.id, date=today, payload=[e.model_dump() for e in daily]))
+    db.commit()
+    return daily
 
 
 @router.get("/menus/today/crafted", response_model=list[EateryCraftedOut])
@@ -237,78 +335,29 @@ async def crafted_meals_today(
     if prefs is None:
         raise HTTPException(status_code=404, detail="Set your preferences first (PUT /preferences)")
 
-    today = datetime.date.today()
-
-    # Same menu + same preferences => same result, so a same-day repeat
-    # request skips the optimizer and every LLM call entirely — see
-    # docs/adr/0017. Invalidated wherever UserPreference is written
-    # (app.routers.preferences), so a stale hit here can't outlive an edit.
-    cached = (
-        db.query(CraftedMealsCache)
-        .filter(CraftedMealsCache.user_id == user.id, CraftedMealsCache.date == today)
-        .one_or_none()
-    )
-    if cached is not None:
-        return cached.payload
-
-    nutrition_by_name = {n.item_name: n for n in db.query(NutritionMatch).all()}
-    diet_by_name = {d.item_name: d for d in db.query(DietTag).all()}
-
-    target = per_meal_target(prefs.calorie_goal, prefs.protein_goal_g, prefs.carb_goal_g, prefs.fat_goal_g, prefs.meals_per_day)
-    constraints = HardConstraints(required_diet_tags=prefs.diet_restrictions, excluded_allergens=prefs.allergens)
-
-    eateries = db.query(Eatery).filter(Eatery.eatery_type == "dining room").order_by(Eatery.name).all()
-    llm_client = make_llm_client()
-
-    # Candidate generation is local (DB + in-memory ranking, no network
-    # calls), so it stays a plain loop.
-    per_eatery = [
-        (eatery, *_ranked_candidates_for_eatery(
-            eatery, today, target, constraints, nutrition_by_name, diet_by_name, prefs, db,
-            n_candidates=N_EATERY_DETAIL_CANDIDATES,
-        ))
-        for eatery in eateries
-    ]  # list[(eatery, meal_period, ranked, reason)]
-
-    # The polish step is the only network I/O — run every eatery's call
-    # concurrently instead of one at a time (see docs/adr/0017), so a cache
-    # miss costs one LLM round trip's worth of wall-clock time, not one per
-    # eatery.
-    needs_polish = [(eatery, ranked) for eatery, _, ranked, reason in per_eatery if reason is None]
-    polished_list = await asyncio.gather(
-        *[polish_meal(llm_client, ranked, target, prefs.liked_tags, prefs.disliked_tags) for _, ranked in needs_polish]
-    )
-    polished_by_eatery_id = {eatery.id: polished for (eatery, _), polished in zip(needs_polish, polished_list)}
+    today = ithaca_today()
+    daily = await get_or_build_daily_crafted(user, prefs, today, db)
 
     out: list[EateryCraftedOut] = []
-    for eatery, meal_period, ranked, reason in per_eatery:
-        if reason is not None:
+    for eatery in daily:
+        available = list(eatery.periods.keys())
+        meal_period = pick_meal_period(available)
+        if meal_period is None:
             out.append(
                 EateryCraftedOut(
                     id=eatery.id, name=eatery.name, campus_area=eatery.campus_area,
-                    meal_period=meal_period, crafted_meal=None, reason_unavailable=reason,
+                    meal_period=None, crafted_meal=None, reason_unavailable=closed_reason(available),
                 )
             )
             continue
 
-        polished = polished_by_eatery_id[eatery.id]
-        chosen = ranked[polished.candidate_index]
-
+        period = eatery.periods[meal_period]
         out.append(
             EateryCraftedOut(
                 id=eatery.id, name=eatery.name, campus_area=eatery.campus_area, meal_period=meal_period,
-                crafted_meal=CraftedMealOut(
-                    name=polished.name,
-                    rationale=polished.rationale,
-                    items=[CraftedItemOut(**vars(i)) for i in chosen.items],
-                    totals=chosen.totals,
-                ),
+                crafted_meal=period.single, reason_unavailable=period.reason_unavailable,
             )
         )
-
-    db.add(CraftedMealsCache(user_id=user.id, date=today, payload=[e.model_dump() for e in out]))
-    db.commit()
-
     return out
 
 
@@ -321,69 +370,32 @@ async def crafted_meals_for_eatery(
     if prefs is None:
         raise HTTPException(status_code=404, detail="Set your preferences first (PUT /preferences)")
 
-    eatery = db.query(Eatery).filter(Eatery.id == eatery_id).one_or_none()
-    if eatery is None:
+    eatery_row = db.query(Eatery).filter(Eatery.id == eatery_id).one_or_none()
+    if eatery_row is None:
         raise HTTPException(status_code=404, detail="Eatery not found")
 
-    today = datetime.date.today()
-    nutrition_by_name = {n.item_name: n for n in db.query(NutritionMatch).all()}
-    diet_by_name = {d.item_name: d for d in db.query(DietTag).all()}
-    target = per_meal_target(prefs.calorie_goal, prefs.protein_goal_g, prefs.carb_goal_g, prefs.fat_goal_g, prefs.meals_per_day)
-    constraints = HardConstraints(required_diet_tags=prefs.diet_restrictions, excluded_allergens=prefs.allergens)
+    today = ithaca_today()
+    daily = await get_or_build_daily_crafted(user, prefs, today, db)
+    eatery = next((e for e in daily if e.id == eatery_id), None)
+    available = list(eatery.periods.keys()) if eatery else []
+    meal_period = pick_meal_period(available)
 
-    menu_events = db.query(MenuEvent).filter(MenuEvent.eatery_id == eatery.id, MenuEvent.date == today).all()
-    periods = [e.meal_period for e in menu_events]
-    meal_period = pick_meal_period(periods)
-
-    llm_client = make_llm_client()
-
-    crafted_meals: list[CraftedMealOut] = []
-    reason: str | None
     if meal_period is None:
-        reason = closed_reason(periods)
+        crafted_meals: list[CraftedMealOut] = []
+        reason: str | None = closed_reason(available)
     else:
-        menu_event = next(e for e in menu_events if e.meal_period == meal_period)
-        ranked, reason = _ranked_candidates_for_menu_event(
-            menu_event, target, constraints, nutrition_by_name, diet_by_name, prefs, db,
-            n_candidates=N_EATERY_DETAIL_CANDIDATES,
-        )
-        if reason is None:
-            polished = await polish_meals(llm_client, ranked, target, prefs.liked_tags, prefs.disliked_tags)
-            crafted_meals = [
-                CraftedMealOut(
-                    name=p.name, rationale=p.rationale,
-                    items=[CraftedItemOut(**vars(i)) for i in c.items],
-                    totals=c.totals,
-                )
-                for c, p in zip(ranked, polished)
-            ]
+        period = eatery.periods[meal_period]
+        crafted_meals = period.options
+        reason = period.reason_unavailable
 
     next_meals: list[NextMealOut] = []
-    for period in next_meal_periods(periods, meal_period):
-        next_event = next(e for e in menu_events if e.meal_period == period)
-        next_ranked, next_reason = _ranked_candidates_for_menu_event(
-            next_event, target, constraints, nutrition_by_name, diet_by_name, prefs, db,
-            n_candidates=N_EATERY_DETAIL_CANDIDATES,
-        )
-        if next_reason is not None:
-            next_meals.append(NextMealOut(meal_period=period, crafted_meal=None, reason_unavailable=next_reason))
-            continue
-
-        next_polished = await polish_meal(llm_client, next_ranked, target, prefs.liked_tags, prefs.disliked_tags)
-        chosen = next_ranked[next_polished.candidate_index]
+    for next_period in next_meal_periods(available, meal_period):
+        period = eatery.periods[next_period]
         next_meals.append(
-            NextMealOut(
-                meal_period=period,
-                crafted_meal=CraftedMealOut(
-                    name=next_polished.name,
-                    rationale=next_polished.rationale,
-                    items=[CraftedItemOut(**vars(i)) for i in chosen.items],
-                    totals=chosen.totals,
-                ),
-            )
+            NextMealOut(meal_period=next_period, crafted_meal=period.single, reason_unavailable=period.reason_unavailable)
         )
 
     return EateryCraftedOptionsOut(
-        id=eatery.id, name=eatery.name, campus_area=eatery.campus_area, meal_period=meal_period,
+        id=eatery_row.id, name=eatery_row.name, campus_area=eatery_row.campus_area, meal_period=meal_period,
         crafted_meals=crafted_meals, reason_unavailable=reason, next_meals=next_meals,
     )

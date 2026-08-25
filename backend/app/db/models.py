@@ -226,14 +226,17 @@ class DietTag(Base):
 
 
 class CraftedMealsCache(Base):
-    """Cached response body of GET /menus/today/crafted for one user on one
-    date — see docs/adr/0017. The crafted-meals computation re-runs the
-    optimizer and an LLM polish call per eatery, so without this every page
-    load/refresh re-does that work even though the inputs (today's menu +
-    this user's preferences) are unchanged between requests. Invalidated
-    explicitly wherever UserPreference is written (app.routers.preferences)
-    rather than on a TTL, since preference edits are the only thing that can
-    change the result mid-day."""
+    """One user's full-day crafted-meals precompute — every eatery, every
+    meal period it serves that date (list[EateryDailyCraftedOut.model_dump()],
+    see app.routers.crafted_meals) — not just whatever period happened to be
+    "now" when it was built. Populated by the daily cron
+    (app.jobs.craft_daily_meals) so /menus/today/crafted and
+    /menus/today/crafted/{id} can pick the period matching *request* time
+    out of an already-computed day, without an LLM call in the request path;
+    a same-day cache miss (e.g. the cron hasn't run yet) falls back to
+    building it lazily. Invalidated explicitly wherever UserPreference is
+    written (app.routers.preferences) rather than on a TTL, since preference
+    edits are the only thing that can change the result mid-day."""
 
     __tablename__ = "crafted_meals_cache"
     __table_args__ = (UniqueConstraint("user_id", "date"),)
