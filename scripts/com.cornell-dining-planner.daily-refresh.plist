@@ -7,7 +7,7 @@
 
 	<key>ProgramArguments</key>
 	<array>
-		<string>/Users/emiricyer/Desktop/cornell-dining-planner/scripts/daily_refresh.sh</string>
+		<string>/Users/emiricyer/Projects/cornell-dining-planner/scripts/daily_refresh.sh</string>
 	</array>
 
 	<!--
@@ -19,6 +19,14 @@
 	  happens to be awake for runs it. Every job in the pipeline is
 	  idempotent (docs/adr/0002, 0003, 0017), so redundant runs across
 	  windows in the same day cost nothing beyond a few no-op DB queries.
+
+	  The project also had to move out of ~/Desktop (originally
+	  cornell-dining-planner lived there) — macOS TCC protects
+	  Desktop/Documents/Downloads, and launchd-spawned processes don't
+	  inherit the folder access an interactive Terminal session gets, so
+	  every run failed immediately with "Operation not permitted" even
+	  though the identical script worked fine run by hand. ~/Projects
+	  isn't a protected location, so this isn't an issue here.
 
 	  For a hard guarantee instead of several chances, schedule an actual
 	  hardware wake before 5am yourself:
@@ -59,8 +67,8 @@
 	     only catch something going wrong before the script gets that far
 	     (e.g. the script itself isn't executable). -->
 	<key>StandardOutPath</key>
-	<string>/Users/emiricyer/Desktop/cornell-dining-planner/logs/launchd.log</string>
+	<string>/Users/emiricyer/Projects/cornell-dining-planner/logs/launchd.log</string>
 	<key>StandardErrorPath</key>
-	<string>/Users/emiricyer/Desktop/cornell-dining-planner/logs/launchd.log</string>
+	<string>/Users/emiricyer/Projects/cornell-dining-planner/logs/launchd.log</string>
 </dict>
 </plist>
