@@ -1,4 +1,3 @@
-import datetime
 from itertools import groupby
 from zoneinfo import ZoneInfo
 
@@ -6,6 +5,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.core.clock import ithaca_today
 from app.db.models import DietTag, Eatery, MenuEvent, MenuItem, NutritionMatch
 from app.db.session import get_db
 
@@ -56,7 +56,7 @@ class EateryOut(BaseModel):
 
 @router.get("/menus/today", response_model=list[EateryOut])
 def menus_today(db: Session = Depends(get_db)) -> list[EateryOut]:
-    today = datetime.datetime.now(ITHACA_TZ).date()
+    today = ithaca_today()
 
     nutrition_by_name = {n.item_name: n for n in db.query(NutritionMatch).all()}
     diet_by_name = {d.item_name: d for d in db.query(DietTag).all()}

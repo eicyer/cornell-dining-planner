@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.cornell-dining-planner.daily-refresh</string>
+
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/emiricyer/Projects/cornell-dining-planner/scripts/daily_refresh.sh</string>
+	</array>
+
+	<!--
+	  Replaces a plain crontab entry (see docs/adr/0019) — crontab silently
+	  skips a run if the Mac is asleep at the scheduled minute, with no
+	  retry. launchd has the same limitation (it doesn't wake a sleeping
+	  Mac either), so instead of one 5am window this gives the refresh
+	  several chances across a normal morning: whichever window the laptop
+	  happens to be awake for runs it. Every job in the pipeline is
+	  idempotent (docs/adr/0002, 0003, 0017), so redundant runs across
+	  windows in the same day cost nothing beyond a few no-op DB queries.
+
+	  The project also had to move out of ~/Desktop (originally
+	  cornell-dining-planner lived there) — macOS TCC protects
+	  Desktop/Documents/Downloads, and launchd-spawned processes don't
+	  inherit the folder access an interactive Terminal session gets, so
+	  every run failed immediately with "Operation not permitted" even
+	  though the identical script worked fine run by hand. ~/Projects
+	  isn't a protected location, so this isn't an issue here.
+
+	  For a hard guarantee instead of several chances, schedule an actual
+	  hardware wake before 5am yourself:
+	    sudo pmset repeat wake MTWRFSU 04:55:00
+	  (not done by this plist — that's a machine-wide power setting, a
+	  separate decision from "what does this project's own scheduling
+	  look like").
+	-->
+	<key>StartCalendarInterval</key>
+	<array>
+		<dict>
+			<key>Hour</key>
+			<integer>5</integer>
+			<key>Minute</key>
+			<integer>0</integer>
+		</dict>
+		<dict>
+			<key>Hour</key>
+			<integer>8</integer>
+			<key>Minute</key>
+			<integer>0</integer>
+		</dict>
+		<dict>
+			<key>Hour</key>
+			<integer>11</integer>
+			<key>Minute</key>
+			<integer>0</integer>
+		</dict>
+	</array>
+
+	<!-- Also run once whenever this agent loads (login, restart, or the
+	     `launchctl load` below) — covers "laptop was off overnight, only
+	     turned on well after every StartCalendarInterval window." -->
+	<key>RunAtLoad</key>
+	<true/>
+
+	<!-- daily_refresh.sh writes its own dated log under ./logs/ — these
+	     only catch something going wrong before the script gets that far
+	     (e.g. the script itself isn't executable). -->
+	<key>StandardOutPath</key>
+	<string>/Users/emiricyer/Projects/cornell-dining-planner/logs/launchd.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/emiricyer/Projects/cornell-dining-planner/logs/launchd.log</string>
+</dict>
+</plist>
