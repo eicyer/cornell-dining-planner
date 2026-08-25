@@ -21,4 +21,6 @@ USER appuser
 # .env.example for the full list and docs/adr/0018 for what
 # ENVIRONMENT=production enforces at boot.
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# $PORT is injected by the hosting platform (e.g. Railway) at runtime;
+# 8000 is the fallback for `docker run` without it set.
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
