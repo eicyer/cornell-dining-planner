@@ -57,7 +57,10 @@ async def craft_daily_meals() -> dict:
         for user, prefs in targets:
             try:
                 daily: list[EateryDailyCraftedOut] = await build_daily_crafted(user, prefs, today, db)
-                db.add(CraftedMealsCache(user_id=user.id, date=today, payload=[e.model_dump() for e in daily]))
+                # build_count=1: this counts as this user's first build of
+                # the day against app.routers.crafted_meals.MAX_BUILDS_PER_DAY,
+                # same as the lazy on-demand path's first build would.
+                db.add(CraftedMealsCache(user_id=user.id, date=today, payload=[e.model_dump() for e in daily], build_count=1))
                 db.commit()
                 users_done += 1
             except Exception:

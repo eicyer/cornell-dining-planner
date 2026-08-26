@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.deps import get_current_user
 from app.core.rate_limit import limiter
-from app.db.models import User
+from app.db.models import CraftedMealsCache, LoggedMeal, User, UserPreference
 from app.db.session import get_db
 
 router = APIRouter(prefix="/auth")
@@ -70,3 +70,20 @@ async def logout(request: Request):
 @router.get("/me")
 async def me(user: User = Depends(get_current_user)):
     return {"id": user.id, "email": user.email}
+
+
+@router.delete("/me")
+async def delete_me(request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Deletes this account and everything scoped to it — preferences,
+    logged meals, cached crafted-meal payloads — then clears the session.
+    No FK cascade is configured at the DB level (see app.db.models), so
+    children are deleted explicitly before the User row itself. No
+    confirmation step here; that's the frontend's job before this is ever
+    called."""
+    db.query(LoggedMeal).filter(LoggedMeal.user_id == user.id).delete()
+    db.query(CraftedMealsCache).filter(CraftedMealsCache.user_id == user.id).delete()
+    db.query(UserPreference).filter(UserPreference.user_id == user.id).delete()
+    db.delete(user)
+    db.commit()
+    request.session.clear()
+    return {"status": "account deleted"}

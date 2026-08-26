@@ -46,6 +46,15 @@ export async function logout(): Promise<void> {
   if (!res.ok) throw new Error(`POST /auth/logout failed: ${res.status}`);
 }
 
+// Permanently deletes the account and everything scoped to it (preferences,
+// logged meals, cached crafted-meal payloads) and clears the session
+// server-side. Irreversible — callers must confirm with the user before
+// calling this; there's no undo endpoint.
+export async function deleteAccount(): Promise<void> {
+  const res = await apiFetch('/auth/me', { method: 'DELETE' });
+  if (!res.ok) throw new Error(`DELETE /auth/me failed: ${res.status}`);
+}
+
 export const ACTIVITY_LEVELS = ['sedentary', 'light', 'moderate', 'active', 'very_active'] as const;
 export type ActivityLevel = (typeof ACTIVITY_LEVELS)[number];
 
