@@ -41,6 +41,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # Every response here is session-dependent or otherwise dynamic.
+        # Without this, a CDN/reverse-proxy fronting this API (e.g. a
+        # Vercel rewrite) can cache and replay a stale response verbatim —
+        # observed as /auth/login serving an identical, already-signed
+        # session cookie on repeat visits, breaking the OAuth CSRF state
+        # check on the next /auth/callback.
+        response.headers["Cache-Control"] = "no-store"
         if settings.environment == "production":
             # Meaningless (and potentially confusing) over local HTTP, so
             # only sent once ENVIRONMENT=production implies real HTTPS.
