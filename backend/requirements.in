@@ -1,7 +1,7 @@
 # Human-edited source of truth for direct dependencies. Run
 #   pip-compile --generate-hashes requirements.in
 # to regenerate the hash-pinned requirements.txt after changing this file.
-fastapi==0.115.0
+fastapi==0.141.1
 uvicorn[standard]==0.32.0
 sqlalchemy==2.0.36
 alembic==1.14.0
@@ -15,9 +15,10 @@ anthropic==0.40.0
 jinja2==3.1.6
 slowapi==0.1.9
 
-# starlette (transitive, via fastapi) is pinned by fastapi==0.115.0's own
-# constraint (starlette>=0.37.2,<0.39.0) to 0.38.6, which has known CVEs
-# with no fix release inside that range — every fix version is >=0.40.0.
-# Patching it means upgrading fastapi itself, a bigger change than this
-# pass takes on unreviewed. Documented as accepted risk in docs/adr/0018
-# until a FastAPI upgrade is planned.
+# starlette (transitive, via fastapi) used to be pinned by fastapi==0.115.0's
+# own constraint (starlette>=0.37.2,<0.39.0) to 0.38.6, which carried known
+# CVEs with no fix release inside that range. fastapi>=0.135.0 lifts that
+# ceiling (starlette>=0.46.0, no upper bound), which resolves to a starlette
+# release with every one of those CVEs fixed. Previously documented as an
+# accepted risk in docs/adr/0018 pending this upgrade — full backend test
+# suite (including tests/security/) passes unchanged against the new pins.
