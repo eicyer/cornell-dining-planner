@@ -22,5 +22,9 @@ USER appuser
 # ENVIRONMENT=production enforces at boot.
 EXPOSE 8000
 # $PORT is injected by the hosting platform (e.g. Railway) at runtime;
-# 8000 is the fallback for `docker run` without it set.
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# 8000 is the fallback for `docker run` without it set. --proxy-headers
+# with --forwarded-allow-ips='*' makes uvicorn trust the platform's
+# X-Forwarded-Proto, so request.url_for() (used to build the OAuth
+# redirect_uri in app/routers/auth.py) resolves to https:// instead of
+# the plain-http scheme the container actually receives connections on.
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"]
