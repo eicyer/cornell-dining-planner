@@ -31,7 +31,10 @@ ADMIN_NEXT_PATH = "/admin"
 async def login(request: Request, next: str | None = None):
     if next == ADMIN_NEXT_PATH:
         request.session["post_login_redirect"] = ADMIN_NEXT_PATH
-    redirect_uri = request.url_for("auth_callback")
+    if settings.oauth_redirect_base_url:
+        redirect_uri = f"{settings.oauth_redirect_base_url}/auth/callback"
+    else:
+        redirect_uri = request.url_for("auth_callback")
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 

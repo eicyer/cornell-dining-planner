@@ -1,0 +1,11 @@
+{
+  "rewrites": [
+    { "source": "/health", "destination": "https://cornell-dining-planner-production-0c3b.up.railway.app/health" },
+    { "source": "/auth/:path*", "destination": "https://cornell-dining-planner-production-0c3b.up.railway.app/auth/:path*" },
+    { "source": "/menus/:path*", "destination": "https://cornell-dining-planner-production-0c3b.up.railway.app/menus/:path*" },
+    { "source": "/preferences/:path*", "destination": "https://cornell-dining-planner-production-0c3b.up.railway.app/preferences/:path*" },
+    { "source": "/logged-meals/:path*", "destination": "https://cornell-dining-planner-production-0c3b.up.railway.app/logged-meals/:path*" },
+    { "source": "/admin", "destination": "https://cornell-dining-planner-production-0c3b.up.railway.app/admin" },
+    { "source": "/admin/api/:path*", "destination": "https://cornell-dining-planner-production-0c3b.up.railway.app/admin/api/:path*" }
+  ]
+}
