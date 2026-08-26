@@ -46,6 +46,14 @@ class Settings(BaseSettings):
     # their Origin header — the CSRF check needs to trust it explicitly.
     backend_url: str = "http://localhost:8001"
 
+    # Only needed when the backend is reached through a same-origin reverse
+    # proxy (e.g. a Vercel rewrite fronting the frontend + API on one
+    # domain, so the session cookie isn't cross-site). When set, the OAuth
+    # redirect_uri is built from this instead of request.url_for(), since
+    # the proxy's outbound Host header to this backend is the backend's own
+    # domain, not the public-facing one Google needs to redirect back to.
+    oauth_redirect_base_url: str = ""
+
     # Comma-separated Host header allowlist for TrustedHostMiddleware.
     allowed_hosts: str = "localhost,127.0.0.1"
 
