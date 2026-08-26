@@ -13,7 +13,7 @@ itsdangerous==2.2.0
 python-multipart==0.0.31
 anthropic==0.40.0
 jinja2==3.1.6
-slowapi==0.1.9
+slowapi==0.1.10
 
 # starlette (transitive, via fastapi) used to be pinned by fastapi==0.115.0's
 # own constraint (starlette>=0.37.2,<0.39.0) to 0.38.6, which carried known
