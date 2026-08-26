@@ -29,6 +29,6 @@ def get_current_user_optional(request: Request, db: Session = Depends(get_db)) -
 def get_current_admin(user: User = Depends(get_current_user)) -> User:
     """Gates every /admin/api/* route — see docs/adr/0016. Exactly one
     operator (settings.admin_email), not a general role system."""
-    if user.email != settings.admin_email:
+    if user.email.lower() != settings.admin_email.lower():
         raise HTTPException(status_code=403, detail="Not authorized")
     return user

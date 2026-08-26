@@ -43,7 +43,7 @@ async def login(request: Request, next: str | None = None):
 async def auth_callback(request: Request, db: Session = Depends(get_db)):
     token = await oauth.google.authorize_access_token(request)
     userinfo = token.get("userinfo")
-    if not userinfo or not userinfo.get("sub") or not userinfo.get("email"):
+    if not userinfo or not userinfo.get("sub") or not userinfo.get("email") or not userinfo.get("email_verified"):
         raise HTTPException(status_code=400, detail="Google did not return a usable identity")
 
     user = db.query(User).filter(User.google_sub == userinfo["sub"]).one_or_none()

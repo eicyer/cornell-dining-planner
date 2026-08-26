@@ -27,4 +27,11 @@ EXPOSE 8000
 # X-Forwarded-Proto, so request.url_for() (used to build the OAuth
 # redirect_uri in app/routers/auth.py) resolves to https:// instead of
 # the plain-http scheme the container actually receives connections on.
+#
+# Deliberately no --workers flag (single process): app.core.rate_limit's
+# Limiter keeps its counters in-memory, not in a shared store like Redis,
+# so every documented per-minute limit (login, LLM-backed routes) silently
+# multiplies by however many processes are actually running. If this ever
+# needs to scale past one Railway replica or one uvicorn worker, the
+# limiter needs a shared backend first — see docs/adr/0018.
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"]
