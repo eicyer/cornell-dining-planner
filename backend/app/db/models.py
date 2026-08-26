@@ -246,6 +246,19 @@ class CraftedMealsCache(Base):
     date: Mapped[datetime.date] = mapped_column(Date)
     payload: Mapped[list] = mapped_column(JSON)
 
+    # A preference edit (see app.routers.preferences._invalidate_crafted_meals_cache)
+    # marks this stale rather than deleting it, so a stale-but-present payload
+    # stays available as a fallback once build_count hits the daily cap below —
+    # see app.routers.crafted_meals.get_or_build_daily_crafted and its
+    # cost-based-abuse note in docs/adr/0018.
+    stale: Mapped[bool] = mapped_column(Boolean, default=False)
+    # How many times this (user_id, date) row has actually been (re)built via
+    # the optimizer + LLM polish steps today — capped at MAX_BUILDS_PER_DAY to
+    # bound per-user Anthropic spend from repeated preference-edit ->
+    # cache-invalidate -> rebuild cycles, independent of the per-IP rate
+    # limits on the routes that trigger it.
+    build_count: Mapped[int] = mapped_column(Integer, default=0)
+
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=datetime.datetime.utcnow
     )

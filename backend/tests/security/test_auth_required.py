@@ -14,6 +14,7 @@ MUTATING_REQUESTS = [
     ("POST", "/logged-meals", {"eatery_id": 1, "meal_period": "Lunch", "items": []}),
     ("PATCH", "/logged-meals/1", {"liked": True}),
     ("PUT", "/admin/api/foods/detail", {}),
+    ("DELETE", "/auth/me", None),
 ]
 
 

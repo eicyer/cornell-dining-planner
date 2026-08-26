@@ -38,12 +38,41 @@ export default function PortionStepper({
     <View style={styles.container}>
       <View style={styles.row}>
         <Pressable
-          onPress={() => onChange(Math.max(0, grams - step))}
+          onPress={() => onChange(stepPortionGrams({ name }, grams, -1))}
           hitSlop={10}
-          style={styles.stepButton}
+          style={styles.stepButtonPrimary}
           disabled={disabled || grams <= 0}
         >
-          <Text style={[styles.stepButtonText, (disabled || grams <= 0) && styles.stepButtonTextDisabled]}>–</Text>
+          <Text
+            style={[styles.stepButtonPrimaryText, (disabled || grams <= 0) && styles.stepButtonTextDisabled]}
+          >
+            –
+          </Text>
+        </Pressable>
+        <Text style={[styles.portionLabel, disabled && styles.stepButtonTextDisabled]} numberOfLines={1}>
+          {portionLabel}
+        </Text>
+        <Pressable
+          onPress={() => onChange(stepPortionGrams({ name }, grams, 1))}
+          hitSlop={10}
+          style={styles.stepButtonPrimary}
+          disabled={disabled}
+        >
+          <Text style={[styles.stepButtonPrimaryText, disabled && styles.stepButtonTextDisabled]}>+</Text>
+        </Pressable>
+      </View>
+      <View style={[styles.row, styles.gramsRow]}>
+        <Pressable
+          onPress={() => onChange(Math.max(0, grams - step))}
+          hitSlop={10}
+          style={styles.stepButtonSecondary}
+          disabled={disabled || grams <= 0}
+        >
+          <Text
+            style={[styles.stepButtonSecondaryText, (disabled || grams <= 0) && styles.stepButtonTextDisabled]}
+          >
+            –
+          </Text>
         </Pressable>
         <TextInput
           style={styles.gramsInput}
@@ -52,29 +81,13 @@ export default function PortionStepper({
           editable={!disabled}
           onChangeText={(t) => onChange(Math.max(0, Number(t.replace(/[^0-9]/g, '')) || 0))}
         />
-        <Pressable onPress={() => onChange(grams + step)} hitSlop={10} style={styles.stepButton} disabled={disabled}>
-          <Text style={[styles.stepButtonText, disabled && styles.stepButtonTextDisabled]}>+</Text>
-        </Pressable>
-      </View>
-      <View style={[styles.row, styles.portionRow]}>
         <Pressable
-          onPress={() => onChange(stepPortionGrams({ name }, grams, -1))}
+          onPress={() => onChange(grams + step)}
           hitSlop={10}
-          style={styles.stepButton}
-          disabled={disabled || grams <= 0}
-        >
-          <Text style={[styles.stepButtonText, (disabled || grams <= 0) && styles.stepButtonTextDisabled]}>–</Text>
-        </Pressable>
-        <Text style={[styles.portionLabel, disabled && styles.stepButtonTextDisabled]} numberOfLines={1}>
-          {portionLabel}
-        </Text>
-        <Pressable
-          onPress={() => onChange(stepPortionGrams({ name }, grams, 1))}
-          hitSlop={10}
-          style={styles.stepButton}
+          style={styles.stepButtonSecondary}
           disabled={disabled}
         >
-          <Text style={[styles.stepButtonText, disabled && styles.stepButtonTextDisabled]}>+</Text>
+          <Text style={[styles.stepButtonSecondaryText, disabled && styles.stepButtonTextDisabled]}>+</Text>
         </Pressable>
       </View>
       <Text style={styles.caption} numberOfLines={1}>
@@ -87,33 +100,47 @@ export default function PortionStepper({
 const styles = StyleSheet.create({
   container: { alignItems: 'flex-end' },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
-  portionRow: { marginTop: 2 },
-  stepButton: {
-    width: 22,
-    height: 22,
+  gramsRow: { marginTop: 3 },
+  stepButtonPrimary: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: colors.ink,
+  },
+  stepButtonPrimaryText: { fontFamily: 'IBMPlexMono_500Medium', fontSize: 18, color: colors.ink, lineHeight: 19 },
+  stepButtonSecondary: {
+    width: 16,
+    height: 16,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: colors.ink,
+    borderColor: colors.inkSecondary,
   },
-  stepButtonText: { fontFamily: 'IBMPlexMono_500Medium', fontSize: 15, color: colors.ink, lineHeight: 16 },
+  stepButtonSecondaryText: {
+    fontFamily: 'IBMPlexMono_500Medium',
+    fontSize: 11,
+    color: colors.inkSecondary,
+    lineHeight: 12,
+  },
   stepButtonTextDisabled: { color: colors.inkTertiary },
   gramsInput: {
     borderBottomWidth: 1,
-    borderBottomColor: colors.ink,
+    borderBottomColor: colors.inkSecondary,
     borderRadius: radius.none,
-    width: 44,
+    width: 36,
     textAlign: 'center',
-    paddingVertical: 2,
+    paddingVertical: 1,
     fontFamily: 'IBMPlexMono_400Regular',
-    fontSize: 14,
-    color: colors.ink,
+    fontSize: 11,
+    color: colors.inkSecondary,
   },
   portionLabel: {
-    fontFamily: 'IBMPlexMono_400Regular',
-    fontSize: 12,
-    color: colors.inkSecondary,
-    minWidth: 64,
+    fontFamily: 'IBMPlexMono_500Medium',
+    fontSize: 16,
+    color: colors.ink,
+    minWidth: 76,
     textAlign: 'center',
   },
   caption: { ...type.caption, marginTop: 2 },

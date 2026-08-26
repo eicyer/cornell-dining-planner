@@ -50,6 +50,16 @@ MEAL_PERIOD_ORDER = ["Breakfast", "Brunch", "Lunch", "Late Lunch", "Dinner"]
 # Preferences less well than #1 would.
 N_EATERY_DETAIL_CANDIDATES = 3
 
+# Bounds how many times one user's daily crafted-meals cache can actually be
+# rebuilt (optimizer + LLM polish calls) in a single day, independent of the
+# per-IP rate limits on the routes that trigger a rebuild (PUT /preferences,
+# GET /menus/today/crafted*). Generous enough to cover a real onboarding
+# session's worth of preference tweaking, but stops a sustained
+# edit-invalidate-rebuild loop from running up open-ended Anthropic spend on
+# one account. See docs/adr/0018's cost-based-DoS note and
+# app.db.models.CraftedMealsCache.build_count.
+MAX_BUILDS_PER_DAY = 12
+
 
 def pick_meal_period(available: list[str]) -> str | None:
     """Returns the period matching *this hour* (Ithaca time — see
@@ -317,11 +327,24 @@ async def get_or_build_daily_crafted(
     cached = (
         db.query(CraftedMealsCache).filter(CraftedMealsCache.user_id == user.id, CraftedMealsCache.date == today).one_or_none()
     )
-    if cached is not None:
+    if cached is not None and not cached.stale:
+        return [EateryDailyCraftedOut.model_validate(e) for e in cached.payload]
+
+    if cached is not None and cached.build_count >= MAX_BUILDS_PER_DAY:
+        # Today's rebuild budget for this user is spent — serve the last
+        # computed result (which may no longer reflect the newest
+        # preference edit) rather than pay for another LLM round trip.
+        # Stale-but-available beats leaving the user with nothing for the
+        # rest of the day.
         return [EateryDailyCraftedOut.model_validate(e) for e in cached.payload]
 
     daily = await build_daily_crafted(user, prefs, today, db)
-    db.add(CraftedMealsCache(user_id=user.id, date=today, payload=[e.model_dump() for e in daily]))
+    if cached is None:
+        cached = CraftedMealsCache(user_id=user.id, date=today, build_count=0)
+        db.add(cached)
+    cached.payload = [e.model_dump() for e in daily]
+    cached.stale = False
+    cached.build_count += 1
     db.commit()
     return daily
 

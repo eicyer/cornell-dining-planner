@@ -35,12 +35,18 @@ router = APIRouter()
 
 
 def _invalidate_crafted_meals_cache(db: Session, user_id: int) -> None:
-    """Drop this user's cached GET /menus/today/crafted result (see
+    """Marks this user's cached GET /menus/today/crafted result stale (see
     docs/adr/0017) — call before every commit that changes UserPreference,
     since preferences are the only thing that can make today's cached
-    result stale mid-day. Deletes across all dates, not just today, in case
-    the server's day has rolled over since the row was written."""
-    db.query(CraftedMealsCache).filter(CraftedMealsCache.user_id == user_id).delete()
+    result stale mid-day. Marks stale rather than deleting so the row's
+    build_count survives the edit — see app.routers.crafted_meals's daily
+    rebuild cap, which needs that count to keep bounding LLM spend across
+    repeated edit/invalidate cycles, not reset on every one. Covers all
+    dates, not just today, in case the server's day has rolled over since
+    the row was written."""
+    db.query(CraftedMealsCache).filter(CraftedMealsCache.user_id == user_id).update(
+        {"stale": True}, synchronize_session=False
+    )
 
 
 # Hard bounds enforced on every save, whether the targets came from the TDEE

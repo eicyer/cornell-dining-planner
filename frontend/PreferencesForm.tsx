@@ -619,6 +619,11 @@ export default function PreferencesForm({
         </View>
 
         <Text style={styles.label}>Allergens to avoid</Text>
+        <Text style={styles.fieldCaption}>
+          Meals containing these are filtered out. Allergen tags are AI-estimated from menu item
+          names, not verified by dining staff — always double-check in person if a reaction would
+          be serious.
+        </Text>
         <View style={styles.chipRow}>
           {ALLERGENS.map((a) => (
             <Chip
