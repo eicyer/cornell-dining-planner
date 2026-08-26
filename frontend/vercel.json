@@ -1,4 +1,5 @@
 {
+  "buildCommand": "npx expo export -p web --clear",
   "rewrites": [
     { "source": "/health", "destination": "https://cornell-dining-planner-production-0c3b.up.railway.app/health" },
     { "source": "/auth/:path*", "destination": "https://cornell-dining-planner-production-0c3b.up.railway.app/auth/:path*" },
