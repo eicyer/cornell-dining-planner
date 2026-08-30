@@ -41,6 +41,12 @@ yarn-error.log*
 # vercel
 .vercel
 
+# Claude Code local/runtime state — machine-specific permissions, a session
+# lock file, and worktrees (which contain their own nested .git checkouts)
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+.claude/worktrees/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
