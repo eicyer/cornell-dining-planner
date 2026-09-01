@@ -11,11 +11,13 @@ import {
   Totals,
   getCraftedMealsToday,
   getMe,
+  getMealPreferenceSurveyPairs,
   getMenusToday,
   getPreferences,
   getStationSurveyPairs,
   loginUrl,
   logout,
+  submitMealPreferenceSurvey,
   submitStationSurvey,
 } from './api';
 import PreferencesForm from './PreferencesForm';
@@ -50,12 +52,13 @@ export type RootStackParamList = {
   Diary: undefined;
   EateryDetail: { eatery: EateryMenu; perMealTarget: Totals | null };
   StationSurvey: { eatery: EateryMenu };
+  MealPreferenceSurvey: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 // Header treatment shared by every "step/detail" route (Survey, FoodSurvey,
-// EateryDetail, StationSurvey) — a flat, title-less native header so the
+// EateryDetail, StationSurvey, MealPreferenceSurvey) — a flat, title-less native header so the
 // platform gives us a real back button and swipe-back gesture for free,
 // without introducing a shadow/border box (kept flat per Design.md).
 const pushedHeaderOptions = {
@@ -199,6 +202,7 @@ function CraftedMealsRouteScreen({ navigation }: NativeStackScreenProps<RootStac
       onLogout={handleLogout}
       onUpdatePreferences={handleUpdatePreferences}
       onRetakeFoodSurvey={() => navigation.navigate('FoodSurvey')}
+      onRefineMealPreferences={() => navigation.navigate('MealPreferenceSurvey')}
     />
   );
 }
@@ -218,6 +222,7 @@ function DiaryRouteScreen({ navigation }: NativeStackScreenProps<RootStackParamL
       onLogout={handleLogout}
       onUpdatePreferences={handleUpdatePreferences}
       onRetakeFoodSurvey={() => navigation.navigate('FoodSurvey')}
+      onRefineMealPreferences={() => navigation.navigate('MealPreferenceSurvey')}
     />
   );
 }
@@ -243,6 +248,21 @@ function StationSurveyRouteScreen({ route, navigation }: NativeStackScreenProps<
         fetchPairs={() => getStationSurveyPairs(eatery.id)}
         submitResponses={(responses) => submitStationSurvey(eatery.id, responses)}
         kicker={`Compare · ${eatery.name}`}
+      />
+    </ScrollView>
+  );
+}
+
+function MealPreferenceSurveyRouteScreen({
+  navigation,
+}: NativeStackScreenProps<RootStackParamList, 'MealPreferenceSurvey'>) {
+  return (
+    <ScrollView style={styles.pushedScroll} contentContainerStyle={styles.pushedContent}>
+      <FoodSurveyScreen
+        onDone={() => navigation.goBack()}
+        fetchPairs={getMealPreferenceSurveyPairs}
+        submitResponses={submitMealPreferenceSurvey}
+        kicker="Meal Preferences"
       />
     </ScrollView>
   );
@@ -325,6 +345,11 @@ export default function RootNavigator() {
         <Stack.Screen name="Diary" component={DiaryRouteScreen} />
         <Stack.Screen name="EateryDetail" component={EateryDetailRouteScreen} options={pushedHeaderOptions} />
         <Stack.Screen name="StationSurvey" component={StationSurveyRouteScreen} options={pushedHeaderOptions} />
+        <Stack.Screen
+          name="MealPreferenceSurvey"
+          component={MealPreferenceSurveyRouteScreen}
+          options={pushedHeaderOptions}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );

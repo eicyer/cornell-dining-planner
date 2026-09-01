@@ -9,6 +9,7 @@ from app.core.deps import get_current_user
 from app.core.rate_limit import limiter
 from app.db.models import (
     ActivityLevel,
+    CommonFood,
     CraftedMealsCache,
     DietTag,
     Eatery,
@@ -26,6 +27,7 @@ from app.services.customizable_items import variant_names
 from app.services.eating_styles import EATING_STYLES
 from app.services.food_survey import SurveyResponse, build_survey, merge_tags, score_survey
 from app.services.llm_enrichment import ALLERGENS, DIET_TAGS
+from app.services.meal_preference_survey import CommonFoodItem, build_meal_preference_survey
 from app.services.preference_parsing import parse_preferences
 from app.services.station_survey import StationItem, build_station_survey
 from app.services.tdee import recommend_targets
@@ -366,6 +368,73 @@ def submit_station_survey(
     # Re-derived, not looked up from GET-time state (there is none) — see
     # build_station_survey's determinism contract.
     pairs = build_station_survey(eatery_id, items, prefs.diet_restrictions, prefs.allergens)
+    pairs_by_id = {p.id: p for p in pairs}
+
+    liked, disliked = score_survey(
+        [SurveyResponse(pair_id=r.pair_id, choice=r.choice) for r in body.responses], pairs_by_id=pairs_by_id
+    )
+    prefs.liked_tags, prefs.disliked_tags = merge_tags(prefs.liked_tags, prefs.disliked_tags, liked, disliked)
+
+    _invalidate_crafted_meals_cache(db, user.id)
+    db.commit()
+    db.refresh(prefs)
+    return prefs
+
+
+# --- Meal Preference Survey — one round per (meal_period, role) bucket
+# contrasting subtypes from the admin-curated Common Foods catalog (e.g.
+# dinner protein: chicken vs. fish). See
+# docs/adr/0020-common-foods-catalog-and-meal-preference-survey. Separate
+# from both surveys above: Cornell-wide like the Food Preference Survey but
+# repeatable and never touches food_survey_completed, like the Station
+# Survey. ---
+
+
+def _active_common_foods(db: Session) -> list[CommonFoodItem]:
+    rows = db.query(CommonFood).filter(CommonFood.active.is_(True)).all()
+    return [
+        CommonFoodItem(
+            id=r.id, name=r.name, meal_period=r.meal_period, role=r.role, subtype=r.subtype,
+            tags=r.tags, diet_tags=r.diet_tags, allergens=r.allergens,
+        )
+        for r in rows
+    ]
+
+
+class MealPreferenceSurveyOut(BaseModel):
+    pairs: list[FoodSurveyPairOut]
+
+
+class MealPreferenceSurveySubmitIn(BaseModel):
+    responses: list[FoodSurveyResponseIn] = Field(min_length=0, max_length=9)
+
+
+@router.get("/preferences/meal-preference-survey", response_model=MealPreferenceSurveyOut)
+def get_meal_preference_survey(
+    user: User = Depends(get_current_user), db: Session = Depends(get_db)
+) -> MealPreferenceSurveyOut:
+    prefs = _get_prefs_or_404(user, db)
+    pairs = build_meal_preference_survey(_active_common_foods(db), prefs.diet_restrictions, prefs.allergens)
+    return MealPreferenceSurveyOut(
+        pairs=[
+            FoodSurveyPairOut(
+                id=p.id,
+                item_a=FoodSurveyItemOut(id=p.item_a.id, name=p.item_a.name),
+                item_b=FoodSurveyItemOut(id=p.item_b.id, name=p.item_b.name),
+            )
+            for p in pairs
+        ]
+    )
+
+
+@router.post("/preferences/meal-preference-survey", response_model=PreferencesOut)
+def submit_meal_preference_survey(
+    body: MealPreferenceSurveySubmitIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    prefs = _get_prefs_or_404(user, db)
+    # Re-derived, not looked up from GET-time state (there is none) — see
+    # build_meal_preference_survey's determinism contract.
+    pairs = build_meal_preference_survey(_active_common_foods(db), prefs.diet_restrictions, prefs.allergens)
     pairs_by_id = {p.id: p for p in pairs}
 
     liked, disliked = score_survey(

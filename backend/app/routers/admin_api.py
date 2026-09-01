@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_admin
 from app.core.rate_limit import limiter
-from app.db.models import DietTag, NutritionMatch, NutritionSource, User
+from app.db.models import CommonFood, DietTag, NutritionMatch, NutritionSource, User
 from app.db.session import get_db
 from app.services.llm_enrichment import ALLERGENS, DIET_TAGS
 from app.services.portion_display import get_portion_display
@@ -248,3 +248,108 @@ def update_food_detail(
     db.refresh(nutrition)
     db.refresh(diet)
     return _food_out(nutrition, diet)
+
+
+# --- Common Foods catalog — see docs/adr/0020. A hand-curated reference of
+# typical breakfast/lunch/dinner protein/vegetable/carb foods, editable here
+# and consumed by app.services.meal_preference_survey. Unlike NutritionMatch
+# above, rows don't need to match anything on a live menu. ---
+
+
+class CommonFoodOut(BaseModel):
+    id: int
+    name: str
+    meal_period: str
+    role: str
+    subtype: str
+    tags: list[str]
+    diet_tags: list[str]
+    allergens: list[str]
+    active: bool
+    updated_at: datetime.datetime
+
+
+class CommonFoodIn(BaseModel):
+    name: str = Field(min_length=1)
+    meal_period: Literal["breakfast", "lunch", "dinner"]
+    role: Literal["protein", "vegetable", "carb"]
+    subtype: str = Field(min_length=1)
+    tags: list[str] = []
+    diet_tags: list[str] = []
+    allergens: list[str] = []
+    active: bool = True
+
+    @field_validator("diet_tags")
+    @classmethod
+    def _validate_diet_tags(cls, v: list[str]) -> list[str]:
+        invalid = set(v) - set(DIET_TAGS)
+        if invalid:
+            raise ValueError(f"Unknown diet_tags {invalid}, must be a subset of {DIET_TAGS}")
+        return v
+
+    @field_validator("allergens")
+    @classmethod
+    def _validate_allergens(cls, v: list[str]) -> list[str]:
+        invalid = set(v) - set(ALLERGENS)
+        if invalid:
+            raise ValueError(f"Unknown allergens {invalid}, must be a subset of {ALLERGENS}")
+        return v
+
+
+def _common_food_out(food: CommonFood) -> CommonFoodOut:
+    return CommonFoodOut(
+        id=food.id, name=food.name, meal_period=food.meal_period, role=food.role, subtype=food.subtype,
+        tags=food.tags, diet_tags=food.diet_tags, allergens=food.allergens, active=food.active,
+        updated_at=food.updated_at,
+    )
+
+
+@router.get("/common-foods", response_model=list[CommonFoodOut])
+def list_common_foods(
+    meal_period: Literal["breakfast", "lunch", "dinner"] | None = None,
+    role: Literal["protein", "vegetable", "carb"] | None = None,
+    active: bool | None = None,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(get_current_admin),
+) -> list[CommonFoodOut]:
+    query = db.query(CommonFood)
+    if meal_period:
+        query = query.filter(CommonFood.meal_period == meal_period)
+    if role:
+        query = query.filter(CommonFood.role == role)
+    if active is not None:
+        query = query.filter(CommonFood.active == active)
+    foods = query.order_by(CommonFood.meal_period, CommonFood.role, CommonFood.subtype, CommonFood.name).all()
+    return [_common_food_out(f) for f in foods]
+
+
+@router.post("/common-foods", response_model=CommonFoodOut)
+@limiter.limit("30/minute")
+def create_common_food(
+    request: Request, body: CommonFoodIn, db: Session = Depends(get_db), _admin: User = Depends(get_current_admin)
+) -> CommonFoodOut:
+    food = CommonFood(**body.model_dump())
+    db.add(food)
+    db.commit()
+    db.refresh(food)
+    return _common_food_out(food)
+
+
+@router.put("/common-foods/{food_id}", response_model=CommonFoodOut)
+@limiter.limit("30/minute")
+def update_common_food(
+    request: Request,
+    food_id: int,
+    body: CommonFoodIn,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(get_current_admin),
+) -> CommonFoodOut:
+    food = db.get(CommonFood, food_id)
+    if food is None:
+        raise HTTPException(status_code=404, detail="Common food not found")
+    for key, value in body.model_dump().items():
+        setattr(food, key, value)
+    food.updated_at = datetime.datetime.utcnow()
+    db.commit()
+    db.refresh(food)
+    return _common_food_out(food)

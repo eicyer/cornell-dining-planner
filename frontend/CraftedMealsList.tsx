@@ -23,6 +23,7 @@ export default function CraftedMealsList({
   onLogout,
   onUpdatePreferences,
   onRetakeFoodSurvey,
+  onRefineMealPreferences,
 }: {
   eateries: EateryCrafted[];
   perMealTarget: Totals | null;
@@ -33,6 +34,7 @@ export default function CraftedMealsList({
   onLogout: () => void;
   onUpdatePreferences: () => void;
   onRetakeFoodSurvey: () => void;
+  onRefineMealPreferences: () => void;
 }) {
   const [logStatus, setLogStatus] = useState<Record<number, LogStatus>>({});
 
@@ -60,6 +62,7 @@ export default function CraftedMealsList({
         onGoToDiary={onGoToDiary}
         onUpdatePreferences={onUpdatePreferences}
         onRetakeFoodSurvey={onRetakeFoodSurvey}
+        onRefineMealPreferences={onRefineMealPreferences}
         onLogout={onLogout}
       />
 

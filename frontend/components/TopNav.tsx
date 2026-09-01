@@ -65,6 +65,7 @@ export default function TopNav({
   onGoToDiary,
   onUpdatePreferences,
   onRetakeFoodSurvey,
+  onRefineMealPreferences,
   onLogout,
 }: {
   current: NavSection;
@@ -72,6 +73,7 @@ export default function TopNav({
   onGoToDiary: () => void;
   onUpdatePreferences: () => void;
   onRetakeFoodSurvey: () => void;
+  onRefineMealPreferences: () => void;
   onLogout: () => void;
 }) {
   // These screens render no native header, so the bar itself owns the status
@@ -89,6 +91,7 @@ export default function TopNav({
       <View style={styles.group}>
         <NavLink label="Preferences" onPress={onUpdatePreferences} />
         <NavLink label="Taste quiz" onPress={onRetakeFoodSurvey} />
+        <NavLink label="Meal prefs" onPress={onRefineMealPreferences} />
         <NavLink label="Log out" onPress={onLogout} />
       </View>
     </View>

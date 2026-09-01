@@ -186,6 +186,32 @@ export async function submitStationSurvey(eateryId: number, responses: FoodSurve
   return res.json();
 }
 
+// --- Meal Preference Survey (one round per meal-period x plate-role
+// bucket, drawn from the admin-curated Common Foods catalog — see
+// docs/adr/0020). Repeatable, Cornell-wide; reuses the same
+// FoodSurveyPair/FoodSurveyResponse shapes as the surveys above. ---
+
+export async function getMealPreferenceSurveyPairs(): Promise<FoodSurveyPair[]> {
+  const res = await apiFetch('/preferences/meal-preference-survey');
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, `GET /preferences/meal-preference-survey failed: ${res.status}`));
+  }
+  const body = await res.json();
+  return body.pairs;
+}
+
+export async function submitMealPreferenceSurvey(responses: FoodSurveyResponse[]): Promise<Preferences> {
+  const res = await apiFetch('/preferences/meal-preference-survey', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ responses }),
+  });
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, `POST /preferences/meal-preference-survey failed: ${res.status}`));
+  }
+  return res.json();
+}
+
 // Mirrors app.services.meal_crafting.ROLE_ORDER.
 export const PLATE_ROLE_ORDER = ['protein', 'carb', 'vegetable'] as const;
 export type PlateRole = (typeof PLATE_ROLE_ORDER)[number];

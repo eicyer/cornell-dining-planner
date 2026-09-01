@@ -225,6 +225,43 @@ class DietTag(Base):
     )
 
 
+class CommonFood(Base):
+    """A hand-curated, admin-editable reference catalog of common
+    breakfast/lunch/dinner foods by plate role — see docs/adr/0020. Distinct
+    from NutritionMatch/DietTag (which key off real, live-scraped menu item
+    names): rows here don't need to correspond to anything on today's menu,
+    they exist to give app.services.meal_preference_survey a
+    (meal_period, role) x subtype grid to draw contrast pairs from (e.g.
+    dinner protein: chicken vs. fish vs. minced meat).
+
+    `subtype` is the grouping/contrast key (e.g. "chicken", "leafy_salad");
+    `tags` are human-phrase words matched by substring against real menu
+    item names, same contract as app.services.food_survey.FoodSurveyItem.tags
+    — first tag is normally subtype's human-readable form.
+    """
+
+    __tablename__ = "common_foods"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String)
+    meal_period: Mapped[str] = mapped_column(String)
+    role: Mapped[str] = mapped_column(String)
+    subtype: Mapped[str] = mapped_column(String)
+
+    tags: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+    diet_tags: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+    allergens: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+
+    # Soft-delete — a survey pair_id already handed to a client shouldn't
+    # start 404ing on POST just because an admin retired an item.
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow)
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow
+    )
+
+
 class CraftedMealsCache(Base):
     """One user's full-day crafted-meals precompute — every eatery, every
     meal period it serves that date (list[EateryDailyCraftedOut.model_dump()],
