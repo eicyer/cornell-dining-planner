@@ -52,6 +52,14 @@ _Avoid_: none
 A repeatable, eatery-scoped pairwise "would you rather" comparison (see [[0013-station-survey]]) — a live-menu counterpart to the Food Preference Survey above, not a replacement for it. Pairs are drawn from today's actual menu at one eatery's staple stations (Grill, Pizza, Chef's Table) rather than a hand-curated catalog, and score into the same `liked_tags`/`disliked_tags` fields via the same scoring rule. Unlike the Food Preference Survey, it's not gated by a completion flag and never runs during onboarding — reachable anytime from an eatery's detail view.
 _Avoid_: none
 
+**Common Food**:
+An admin-curated, admin-editable reference row (`app.db.models.CommonFood`) describing one typical food for one meal period and plate role — e.g. "Grilled Chicken Breast" for dinner/protein (see [[0020-common-foods-catalog-and-meal-preference-survey]]). Unlike Menu Item/Nutrition Match, it doesn't need to correspond to anything on today's live menu — it exists to give the Meal Preference Survey below a grid of meal-period × role × subtype (`chicken`, `fish`, `caesar_salad`, `potato`, ...) to draw contrast pairs from. Viewable and editable from the "Meal Catalog" tab of the `/admin` panel.
+_Avoid_: none
+
+**Meal Preference Survey**:
+A repeatable, Cornell-wide pairwise "would you rather" comparison (see [[0020-common-foods-catalog-and-meal-preference-survey]]) drawn from the Common Food catalog rather than a live menu or a fixed onboarding set. One round per meal-period × plate-role bucket (breakfast/lunch/dinner × protein/vegetable/carb), contrasting two different subtypes within that bucket — e.g. dinner protein: chicken vs. fish; lunch vegetable: Caesar salad vs. Greek salad. Scores into the same `liked_tags`/`disliked_tags` fields via the same scoring rule as the Food Preference Survey and Station Survey above. Not gated by a completion flag and never runs during onboarding — reachable anytime from the same header as "Retake Food Survey."
+_Avoid_: none
+
 **Activity Level**:
 A user's self-reported exercise frequency (sedentary through very active), used as the multiplier from BMR to TDEE in Recommended Targets. Input to Recommended Targets only.
 _Avoid_: none

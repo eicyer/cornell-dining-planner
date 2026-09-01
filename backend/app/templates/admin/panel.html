@@ -150,6 +150,48 @@
   .pager .page-info { font-size: 12px; color: var(--ink-tertiary); }
 
   .empty { padding: 48px 0; text-align: center; color: var(--ink-tertiary); font-size: 14px; }
+
+  .tabs { display: flex; gap: 24px; margin-bottom: 20px; }
+  .tab-btn {
+    background: none; border: none; padding: 0 0 8px; cursor: pointer;
+    font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 14px;
+    color: var(--ink-tertiary); border-bottom: 2px solid transparent;
+  }
+  .tab-btn.active { color: var(--ink); border-bottom-color: var(--accent); }
+
+  .catalog-group { margin-bottom: 28px; }
+  .catalog-group-title {
+    font-family: 'Fraunces', serif; font-weight: 700; font-size: 20px; margin: 0 0 12px;
+  }
+  .catalog-role { margin-bottom: 18px; }
+  .catalog-role-title {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--ink-tertiary);
+    margin-bottom: 8px; display: flex; align-items: center; gap: 10px;
+  }
+  .catalog-role-title .add-link {
+    font-size: 11px; text-transform: none; letter-spacing: 0; color: var(--accent);
+    text-decoration: underline; cursor: pointer;
+  }
+  .catalog-item {
+    border-bottom: 1px solid var(--hairline); padding: 10px 0; cursor: pointer;
+  }
+  .catalog-item-head {
+    display: grid; grid-template-columns: 1fr auto auto; gap: 16px; align-items: center;
+  }
+  .catalog-item.inactive .row-name { color: var(--ink-tertiary); text-decoration: line-through; }
+  .catalog-item-subtype {
+    font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--ink-secondary);
+  }
+  .catalog-item-tags { font-size: 12px; color: var(--ink-tertiary); }
+  .field-grid.catalog { grid-template-columns: repeat(2, 1fr); }
+  .field textarea {
+    width: 100%; font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: var(--ink);
+    background: transparent; border: none; border-bottom: 1px solid var(--hairline); padding: 6px 2px;
+    outline: none; resize: vertical;
+  }
+  .field textarea:focus { border-bottom-color: var(--accent); }
+  .field.checkbox { display: flex; align-items: center; gap: 8px; }
+  .field.checkbox label { margin: 0; }
 </style>
 </head>
 <body>
@@ -162,27 +204,42 @@
       </div>
     </header>
 
-    <div class="controls">
-      <input type="text" id="search" placeholder="Search food name…" />
-      <select id="source">
-        <option value="">Any source</option>
-        <option value="usda">USDA</option>
-        <option value="llm_estimate">LLM estimate</option>
-      </select>
-      <select id="sort">
-        <option value="name">Sort: Name</option>
-        <option value="confidence_asc">Sort: Lowest confidence</option>
-        <option value="resolved_desc">Sort: Recently resolved</option>
-      </select>
-      <label class="toggle"><input type="checkbox" id="needsAttention" /> Needs attention only</label>
-      <div class="count" id="count"></div>
+    <div class="tabs">
+      <button class="tab-btn active" id="tabFoodsBtn">Nutrition Corrections</button>
+      <button class="tab-btn" id="tabCatalogBtn">Meal Catalog</button>
     </div>
 
-    <div id="rows"></div>
-    <div class="pager" id="pager" style="display:none">
-      <button id="prevPage">← Prev</button>
-      <span class="page-info" id="pageInfo"></span>
-      <button id="nextPage">Next →</button>
+    <div id="foodsTab">
+      <div class="controls">
+        <input type="text" id="search" placeholder="Search food name…" />
+        <select id="source">
+          <option value="">Any source</option>
+          <option value="usda">USDA</option>
+          <option value="llm_estimate">LLM estimate</option>
+        </select>
+        <select id="sort">
+          <option value="name">Sort: Name</option>
+          <option value="confidence_asc">Sort: Lowest confidence</option>
+          <option value="resolved_desc">Sort: Recently resolved</option>
+        </select>
+        <label class="toggle"><input type="checkbox" id="needsAttention" /> Needs attention only</label>
+        <div class="count" id="count"></div>
+      </div>
+
+      <div id="rows"></div>
+      <div class="pager" id="pager" style="display:none">
+        <button id="prevPage">← Prev</button>
+        <span class="page-info" id="pageInfo"></span>
+        <button id="nextPage">Next →</button>
+      </div>
+    </div>
+
+    <div id="catalogTab" style="display:none">
+      <div class="controls">
+        <label class="toggle"><input type="checkbox" id="catalogShowInactive" /> Show deactivated</label>
+        <div class="count" id="catalogCount"></div>
+      </div>
+      <div id="catalogGroups"></div>
     </div>
   </div>
 
@@ -190,6 +247,17 @@
 document.getElementById('logoutBtn').addEventListener('click', () => {
   fetch('/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { location.reload(); });
 });
+
+document.getElementById('tabFoodsBtn').addEventListener('click', () => switchTab('foods'));
+document.getElementById('tabCatalogBtn').addEventListener('click', () => switchTab('catalog'));
+
+function switchTab(tab) {
+  document.getElementById('foodsTab').style.display = tab === 'foods' ? '' : 'none';
+  document.getElementById('catalogTab').style.display = tab === 'catalog' ? '' : 'none';
+  document.getElementById('tabFoodsBtn').classList.toggle('active', tab === 'foods');
+  document.getElementById('tabCatalogBtn').classList.toggle('active', tab === 'catalog');
+  if (tab === 'catalog' && catalogState.foods === null) fetchCommonFoods();
+}
 
 const DIET_TAGS = {{ diet_tags | tojson }};
 const ALLERGENS = {{ allergens | tojson }};
@@ -452,6 +520,212 @@ el('prevPage').addEventListener('click', () => { if (state.page > 1) { state.pag
 el('nextPage').addEventListener('click', () => { state.page += 1; fetchFoods(); });
 
 fetchFoods();
+
+// --- Meal Catalog tab — see docs/adr/0020. A small, non-paginated CRUD
+// view over app.db.models.CommonFood, grouped the same way the survey
+// buckets it: meal period, then plate role. ---
+
+const MEAL_PERIODS = ['breakfast', 'lunch', 'dinner'];
+const ROLES = ['protein', 'vegetable', 'carb'];
+
+let catalogState = { foods: null, showInactive: false, expandedId: null, addingKey: null };
+
+async function fetchCommonFoods() {
+  const params = new URLSearchParams();
+  if (!catalogState.showInactive) params.set('active', 'true');
+  const res = await fetch('/admin/api/common-foods?' + params.toString(), { credentials: 'include' });
+  if (!res.ok) {
+    el('catalogGroups').innerHTML = '<div class="empty">Failed to load (' + res.status + ')</div>';
+    return;
+  }
+  catalogState.foods = await res.json();
+  renderCatalog();
+}
+
+function catalogItemEditorHtml(f) {
+  const isNew = f.id == null;
+  return `
+    <div class="editor" data-food-id="${isNew ? '' : f.id}">
+      <div class="field-grid catalog">
+        <div class="field"><label>Name</label><input type="text" data-field="name" value="${(f.name || '').replace(/"/g, '&quot;')}" /></div>
+        <div class="field"><label>Subtype (grouping key)</label><input type="text" data-field="subtype" value="${(f.subtype || '').replace(/"/g, '&quot;')}" /></div>
+        <div class="field"><label>Meal period</label>
+          <select data-field="meal_period">
+            ${MEAL_PERIODS.map(p => `<option value="${p}" ${f.meal_period === p ? 'selected' : ''}>${p}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field"><label>Role</label>
+          <select data-field="role">
+            ${ROLES.map(r => `<option value="${r}" ${f.role === r ? 'selected' : ''}>${r}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="field" style="margin-bottom: 16px;">
+        <label>Tags (comma-separated, matched against real menu item names)</label>
+        <textarea rows="2" data-field="tags">${(f.tags || []).join(', ')}</textarea>
+      </div>
+      <div class="chip-group">
+        <div class="group-label">Diet tags</div>
+        <div class="chips" data-chipgroup="diet_tags">${chipsHtml(DIET_TAGS, f.diet_tags || [], 'diet_tags')}</div>
+      </div>
+      <div class="chip-group">
+        <div class="group-label">Allergens</div>
+        <div class="chips" data-chipgroup="allergens">${chipsHtml(ALLERGENS, f.allergens || [], 'allergens')}</div>
+      </div>
+      <div class="field checkbox" style="margin-bottom: 16px;">
+        <input type="checkbox" id="activeCheck${isNew ? 'New' : f.id}" data-field="active" ${f.active !== false ? 'checked' : ''} />
+        <label for="activeCheck${isNew ? 'New' : f.id}" style="text-transform:none; font-size:13px; color: var(--ink-secondary);">Active (shown to the survey)</label>
+      </div>
+      <div class="editor-actions">
+        <button class="save-btn" data-action="catalog-save">${isNew ? 'Add food' : 'Save'}</button>
+        <button class="cancel-link" data-action="catalog-cancel">Cancel</button>
+        <span class="save-status"></span>
+      </div>
+    </div>
+  `;
+}
+
+function renderCatalog() {
+  if (!catalogState.foods) return;
+  el('catalogCount').textContent = catalogState.foods.length + (catalogState.foods.length === 1 ? ' food' : ' foods');
+
+  const byBucket = {};
+  for (const f of catalogState.foods) {
+    const key = f.meal_period + ':' + f.role;
+    (byBucket[key] = byBucket[key] || []).push(f);
+  }
+
+  el('catalogGroups').innerHTML = MEAL_PERIODS.map(period => `
+    <div class="catalog-group">
+      <h2 class="catalog-group-title">${period[0].toUpperCase() + period.slice(1)}</h2>
+      ${ROLES.map(role => {
+        const key = period + ':' + role;
+        const items = (byBucket[key] || []).sort((a, b) => a.subtype.localeCompare(b.subtype) || a.name.localeCompare(b.name));
+        const addKey = key;
+        return `
+          <div class="catalog-role" data-bucket="${key}">
+            <div class="catalog-role-title">
+              <span>${role} (${items.length})</span>
+              <span class="add-link" data-add-bucket="${addKey}">+ Add food</span>
+            </div>
+            ${items.map(f => `
+              <div class="catalog-item${f.active ? '' : ' inactive'}" data-id="${f.id}">
+                <div class="catalog-item-head">
+                  <div>
+                    <span class="row-name">${f.name}</span>
+                    ${f.active ? '' : '<span class="row-flag">· deactivated</span>'}
+                    <div class="catalog-item-tags">${(f.tags || []).join(', ')}</div>
+                  </div>
+                  <div class="catalog-item-subtype">${f.subtype}</div>
+                  <div></div>
+                </div>
+                ${catalogState.expandedId === f.id ? catalogItemEditorHtml(f) : ''}
+              </div>
+            `).join('')}
+            ${catalogState.addingKey === addKey ? catalogItemEditorHtml({ id: null, meal_period: period, role, active: true, tags: [], diet_tags: [], allergens: [] }) : ''}
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `).join('');
+
+  wireCatalogEvents();
+}
+
+function catalogEditorPayload(editor) {
+  const getVal = (field) => editor.querySelector(`[data-field="${field}"]`).value;
+  const getChips = (group) =>
+    Array.from(editor.querySelectorAll(`[data-chipgroup="${group}"] .chip.selected`)).map(c => c.dataset.value);
+  return {
+    name: getVal('name'),
+    meal_period: getVal('meal_period'),
+    role: getVal('role'),
+    subtype: getVal('subtype'),
+    tags: getVal('tags').split(',').map(t => t.trim()).filter(Boolean),
+    diet_tags: getChips('diet_tags'),
+    allergens: getChips('allergens'),
+    active: editor.querySelector('[data-field="active"]').checked,
+  };
+}
+
+function wireCatalogEvents() {
+  document.querySelectorAll('.catalog-item').forEach(item => {
+    const id = Number(item.dataset.id);
+    item.querySelector('.catalog-item-head').onclick = () => {
+      catalogState.expandedId = catalogState.expandedId === id ? null : id;
+      catalogState.addingKey = null;
+      renderCatalog();
+    };
+  });
+
+  document.querySelectorAll('[data-add-bucket]').forEach(link => {
+    link.onclick = (ev) => {
+      ev.stopPropagation();
+      catalogState.addingKey = catalogState.addingKey === link.dataset.addBucket ? null : link.dataset.addBucket;
+      catalogState.expandedId = null;
+      renderCatalog();
+    };
+  });
+
+  document.querySelectorAll('.chip').forEach(chip => {
+    chip.onclick = (ev) => { ev.stopPropagation(); chip.classList.toggle('selected'); };
+  });
+
+  document.querySelectorAll('[data-action="catalog-cancel"]').forEach(btn => {
+    btn.onclick = (ev) => {
+      ev.stopPropagation();
+      catalogState.expandedId = null;
+      catalogState.addingKey = null;
+      renderCatalog();
+    };
+  });
+
+  document.querySelectorAll('[data-action="catalog-save"]').forEach(btn => {
+    btn.onclick = async (ev) => {
+      ev.stopPropagation();
+      const editor = btn.closest('.editor');
+      const statusEl = editor.querySelector('.save-status');
+      const foodId = editor.dataset.foodId;
+      const body = catalogEditorPayload(editor);
+
+      btn.disabled = true;
+      statusEl.textContent = 'Saving…';
+      statusEl.classList.remove('error');
+
+      const res = await fetch(
+        foodId ? `/admin/api/common-foods/${foodId}` : '/admin/api/common-foods',
+        {
+          method: foodId ? 'PUT' : 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        },
+      );
+
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        const msg = typeof errBody.detail === 'string'
+          ? errBody.detail
+          : Array.isArray(errBody.detail)
+            ? errBody.detail.map(d => d.msg).join('; ')
+            : 'Save failed';
+        statusEl.textContent = msg;
+        statusEl.classList.add('error');
+        btn.disabled = false;
+        return;
+      }
+
+      catalogState.expandedId = null;
+      catalogState.addingKey = null;
+      await fetchCommonFoods();
+    };
+  });
+}
+
+el('catalogShowInactive').addEventListener('change', (ev) => {
+  catalogState.showInactive = ev.target.checked;
+  fetchCommonFoods();
+});
 </script>
 </body>
 </html>
