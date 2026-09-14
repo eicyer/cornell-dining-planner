@@ -206,15 +206,27 @@ async def put_preferences(
     prefs.health_goal = body.health_goal
     prefs.macro_style = body.macro_style
     prefs.target_mode = body.target_mode
+    # Only re-parse (an LLM call) when the free text actually changed —
+    # every PUT /preferences previously re-sent unchanged text through the
+    # LLM on every save (e.g. just editing calorie_goal), which is both
+    # wasted spend and the one liked_tags/disliked_tags write path with no
+    # cache at all (see app.services.preference_parsing; unlike the survey
+    # paths' merge_tags, this assignment is a full overwrite, so skipping
+    # it when nothing changed also avoids re-clobbering survey-derived tags
+    # on every unrelated preference edit).
+    text_changed = (
+        body.liked_foods_text != prefs.liked_foods_text or body.disliked_foods_text != prefs.disliked_foods_text
+    )
     prefs.liked_foods_text = body.liked_foods_text
     prefs.disliked_foods_text = body.disliked_foods_text
     prefs.eating_styles = body.eating_styles
 
-    liked_tags, disliked_tags = await parse_preferences(
-        make_llm_client(), body.liked_foods_text, body.disliked_foods_text
-    )
-    prefs.liked_tags = liked_tags
-    prefs.disliked_tags = disliked_tags
+    if text_changed:
+        liked_tags, disliked_tags = await parse_preferences(
+            make_llm_client(), body.liked_foods_text, body.disliked_foods_text
+        )
+        prefs.liked_tags = liked_tags
+        prefs.disliked_tags = disliked_tags
 
     _invalidate_crafted_meals_cache(db, user.id)
     db.commit()
