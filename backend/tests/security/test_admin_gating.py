@@ -19,3 +19,24 @@ def test_admin_gets_through(client, admin_user):
     app.dependency_overrides[get_current_user] = lambda: admin_user
     response = client.get("/admin/api/foods", headers={"Origin": ALLOWED_ORIGIN})
     assert response.status_code == 200
+
+
+def test_admin_page_and_api_agree_despite_case_and_whitespace(client, admin_user, monkeypatch):
+    # /admin (page) and /admin/api/* share deps.is_admin — a stray capital
+    # or trailing space in ADMIN_EMAIL must not lock the operator out of
+    # either one.
+    from app.core.config import settings
+    from app.core.deps import get_current_user_optional
+
+    monkeypatch.setattr(settings, "admin_email", f"  {admin_user.email.upper()} ")
+    app.dependency_overrides[get_current_user] = lambda: admin_user
+    app.dependency_overrides[get_current_user_optional] = lambda: admin_user
+    assert client.get("/admin").status_code == 200
+    assert client.get("/admin/api/foods", headers={"Origin": ALLOWED_ORIGIN}).status_code == 200
+
+
+def test_non_admin_gets_forbidden_page(client, other_user):
+    from app.core.deps import get_current_user_optional
+
+    app.dependency_overrides[get_current_user_optional] = lambda: other_user
+    assert client.get("/admin").status_code == 403

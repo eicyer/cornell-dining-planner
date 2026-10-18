@@ -11,8 +11,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from app.core.config import settings
-from app.core.deps import get_current_user_optional
+from app.core.deps import get_current_user_optional, is_admin
 from app.db.models import User
 from app.services.llm_enrichment import ALLERGENS, DIET_TAGS
 
@@ -28,7 +27,7 @@ def admin_page(request: Request, user: User | None = Depends(get_current_user_op
     nonce = request.state.csp_nonce
     if user is None:
         return templates.TemplateResponse(request, "admin/login.html", {"nonce": nonce}, status_code=401)
-    if user.email != settings.admin_email:
+    if not is_admin(user):
         return templates.TemplateResponse(
             request, "admin/forbidden.html", {"email": user.email, "nonce": nonce}, status_code=403
         )
