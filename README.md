@@ -50,7 +50,7 @@ print(client.get('/menus/today/crafted').json())
 
 ### Frontend (Expo / React Native / React Native Web)
 
-Needs Node 20+ (Expo's CLI breaks on Node 18 — `frontend/.nvmrc` pins this):
+Needs Node 22.13+ (Expo SDK 58 requires it — `frontend/.nvmrc` pins this):
 
 ```bash
 cd frontend
