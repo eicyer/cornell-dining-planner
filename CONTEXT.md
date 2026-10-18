@@ -80,6 +80,14 @@ _Avoid_: TDEE (that's one intermediate number in the calculation, not the final 
 Whether a user's current daily calorie/macro targets came from Recommended Targets or were typed in directly. Purely informational — manual entry is always available and always overrides whatever was last recommended; Target Mode just lets the preferences form default back to the right tab on re-open.
 _Avoid_: none
 
+**Portion Unit**:
+The everyday unit (scoop, slice, cup, palm, plate, tbsp, piece) and grams-per-unit a Menu Item is pictured and stepped in on screen ("≈ 1½ scoops"). It comes from a keyword heuristic on the item name (`frontend/foodDensity.ts`) unless the admin has set a Portion Override for that item. Display-only: it never feeds calorie/macro math or meal crafting, and it's not a serving size (see [[0007-nutrition-per-100g-portion-deferred]]).
+_Avoid_: Portion size, serving (both suggest an amount to eat, which the optimizer decides)
+
+**Portion Override**:
+An admin-set Portion Unit for one item name (`app.db.models.PortionOverride`), edited from the `/admin` food editor. It takes precedence over the keyword heuristic everywhere the app shows portions, and "Reset to default" removes it — see [[0022-admin-editable-portion-units]].
+_Avoid_: none
+
 **Logged Meal**:
 A record that a user actually ate a specific set of dining-hall Menu Items at a given eatery/Menu Event, created by accepting a Crafted Meal or manually assembling items. The unit daily/weekly totals are computed from. Scoped to dining-hall food only — not a general food diary.
 _Avoid_: Diary entry, food log entry
