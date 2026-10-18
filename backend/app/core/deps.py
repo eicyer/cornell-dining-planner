@@ -26,9 +26,16 @@ def get_current_user_optional(request: Request, db: Session = Depends(get_db)) -
     return db.get(User, user_id)
 
 
+def is_admin(user: User) -> bool:
+    """The single admin check — see docs/adr/0016. Exactly one operator
+    (settings.admin_email), not a general role system. Case- and
+    whitespace-insensitive so a stray capital or trailing space in
+    ADMIN_EMAIL can't lock the operator out."""
+    return user.email.strip().lower() == settings.admin_email.strip().lower()
+
+
 def get_current_admin(user: User = Depends(get_current_user)) -> User:
-    """Gates every /admin/api/* route — see docs/adr/0016. Exactly one
-    operator (settings.admin_email), not a general role system."""
-    if user.email.lower() != settings.admin_email.lower():
+    """Gates every /admin/api/* route."""
+    if not is_admin(user):
         raise HTTPException(status_code=403, detail="Not authorized")
     return user
