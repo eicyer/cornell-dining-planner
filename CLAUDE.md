@@ -5,7 +5,7 @@ FastAPI backend (`backend/`) + Expo/React Native Web frontend (`frontend/`). See
 ## Environment quirks
 
 - Non-default ports: Postgres on `5433`, backend API on `8001` — `5432`/`8000` are taken by another project on this machine. Don't reuse them.
-- Frontend needs Node 20+ (`cd frontend && nvm use` — Expo's CLI breaks on Node 18).
+- Frontend needs Node 22.13+ (`cd frontend && nvm use` — Expo SDK 58 requires it).
 - `frontend/CLAUDE.md` → `AGENTS.md`: Expo has changed significantly since training data; read the versioned docs at the linked URL before writing frontend code, don't rely on prior Expo knowledge.
 
 ## Commands
