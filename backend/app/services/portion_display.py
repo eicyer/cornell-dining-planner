@@ -1,8 +1,8 @@
 """Manually-synced mirror of frontend/foodDensity.ts's UNIT_RULES.
 
-Display-only: powers the read-only "portion mapping" line in the admin panel
-so a bad keyword rule can be spotted, never used for any nutrition/serving
-calculation on the backend. If frontend/foodDensity.ts changes, update this
+Display-only: powers the "portion" section of the admin panel so a bad
+keyword match can be spotted and overridden per food (docs/adr/0022), never
+used for any nutrition/serving calculation on the backend. If frontend/foodDensity.ts changes, update this
 file to match — same manual-mirror contract frontend/api.ts already keeps
 for this backend's DIET_TAGS/ALLERGENS/EATING_STYLES constants, just in the
 other direction. Only the static unit + grams-per-unit lookup is ported, not
@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+
+from app.db.models import PortionOverride
 
 PortionUnit = str  # 'scoop' | 'slice' | 'cup' | 'palm' | 'plate' | 'tbsp' | 'piece'
 
@@ -123,13 +125,26 @@ class PortionDisplay:
     plural_label: str
 
 
-def get_portion_display(item_name: str) -> PortionDisplay:
-    """The everyday unit + grams-per-unit this food name maps to today, per
-    the frontend heuristic — read-only, display-only."""
+def _display(unit: PortionUnit, grams_per_unit: float) -> PortionDisplay:
+    label, plural_label = UNIT_LABELS[unit]
+    return PortionDisplay(unit=unit, grams_per_unit=grams_per_unit, label=label, plural_label=plural_label)
+
+
+def get_heuristic_portion_display(item_name: str) -> PortionDisplay:
+    """The everyday unit + grams-per-unit this food name maps to per the
+    frontend keyword heuristic alone, ignoring any admin override."""
     lower = item_name.lower()
     rule = next(
         (r for r in UNIT_RULES if any(_matches_keyword(k, lower) for k in r.keywords)),
         DEFAULT_RULE,
     )
-    label, plural_label = UNIT_LABELS[rule.unit]
-    return PortionDisplay(unit=rule.unit, grams_per_unit=rule.grams_per_unit, label=label, plural_label=plural_label)
+    return _display(rule.unit, rule.grams_per_unit)
+
+
+def get_portion_display(item_name: str, override: PortionOverride | None = None) -> PortionDisplay:
+    """The unit the app actually pictures this food in: the admin override
+    when one exists, otherwise the keyword heuristic — same precedence as
+    getPortionUnit in frontend/foodDensity.ts."""
+    if override is not None:
+        return _display(override.unit, override.grams_per_unit)
+    return get_heuristic_portion_display(item_name)

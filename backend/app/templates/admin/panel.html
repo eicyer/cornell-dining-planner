@@ -109,7 +109,7 @@
   .field input:focus, .field select:focus { border-bottom-color: var(--accent); }
 
   .chip-group { margin-bottom: 16px; }
-  .chip-group .group-label {
+  .chip-group .group-label, .portion-section .group-label {
     font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--ink-tertiary); margin-bottom: 8px;
   }
   .chips { display: flex; flex-wrap: wrap; gap: 8px 16px; }
@@ -121,6 +121,15 @@
 
   .portion-line { font-size: 13px; color: var(--ink-tertiary); margin-bottom: 6px; }
   .portion-line .mono { font-family: 'IBM Plex Mono', monospace; color: var(--ink-secondary); }
+  .portion-section { border-top: 1px solid var(--hairline); padding-top: 16px; margin-top: 20px; }
+  .portion-row { display: flex; gap: 20px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 10px; }
+  .portion-row .field { width: 160px; margin-bottom: 0; }
+  .secondary-btn {
+    background: none; color: var(--accent); border: 1px solid var(--accent);
+    font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 13px;
+    padding: 7px 16px; cursor: pointer;
+  }
+  .secondary-btn:disabled { color: var(--disabled); border-color: var(--disabled); cursor: default; }
   .portion-equiv {
     font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--ink-secondary); margin-bottom: 6px;
   }
@@ -316,6 +325,10 @@ function calorieMismatch(calories, expected) {
   return Math.abs(expected - calories) / calories > MACRO_CALORIE_MISMATCH_TOLERANCE;
 }
 
+// Mirrors UNIT_LABELS in app.services.portion_display / frontend/foodDensity.ts
+// — the only units an override can use (docs/adr/0022).
+const PORTION_UNITS = ['scoop', 'slice', 'cup', 'palm', 'plate', 'tbsp', 'piece'];
+
 function portionEquivText(cal, protein, carbs, fat, gramsPerUnit, label) {
   const scale = gramsPerUnit / 100;
   return `≈ ${Math.round(cal * scale)} cal · ${(protein * scale).toFixed(1)}g P · ` +
@@ -334,7 +347,7 @@ function calorieCheckText(cal, protein, carbs, fat) {
 function editorHtml(f) {
   const check = calorieCheckText(f.calories_per_100g, f.protein_g_per_100g, f.carbs_g_per_100g, f.fat_g_per_100g);
   return `
-    <div class="editor" data-grams-per-unit="${f.portion_grams_per_unit}" data-portion-label="${f.portion_label}">
+    <div class="editor">
       <div class="field-grid">
         <div class="field"><label>Calories / 100g</label><input type="number" step="any" data-field="calories_per_100g" value="${f.calories_per_100g}" /></div>
         <div class="field"><label>Protein g / 100g</label><input type="number" step="any" data-field="protein_g_per_100g" value="${f.protein_g_per_100g}" /></div>
@@ -358,16 +371,31 @@ function editorHtml(f) {
         <div class="group-label">Likely allergens</div>
         <div class="chips" data-chipgroup="likely_allergens">${chipsHtml(ALLERGENS, f.likely_allergens, 'likely_allergens')}</div>
       </div>
-      <div class="portion-line">
-        Portion mapping (read-only): <span class="mono">${f.portion_grams_per_unit}g / ${f.portion_label}</span>
-        — edit <span class="mono">frontend/foodDensity.ts</span> to change this.
-      </div>
-      <div class="portion-equiv" id="portionEquivText">${portionEquivText(f.calories_per_100g, f.protein_g_per_100g, f.carbs_g_per_100g, f.fat_g_per_100g, f.portion_grams_per_unit, f.portion_label)}</div>
+      <div class="portion-equiv" id="portionEquivText">${portionEquivText(f.calories_per_100g, f.protein_g_per_100g, f.carbs_g_per_100g, f.fat_g_per_100g, f.portion_grams_per_unit, f.portion_unit)}</div>
       <div class="calorie-check${check.mismatch ? ' mismatch' : ''}" id="calorieCheckText">${check.text}</div>
       <div class="editor-actions">
         <button class="save-btn" data-action="save">Save</button>
         <button class="cancel-link" data-action="cancel">Cancel</button>
         <span class="save-status"></span>
+      </div>
+      <div class="portion-section">
+        <div class="group-label">Portion — how the app pictures and steps this food</div>
+        <div class="portion-row">
+          <div class="field"><label>Unit</label>
+            <select data-portion-field="unit">
+              ${PORTION_UNITS.map(u => `<option value="${u}" ${f.portion_unit === u ? 'selected' : ''}>${u}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field"><label>Grams per unit</label><input type="number" step="any" min="1" data-portion-field="grams_per_unit" value="${f.portion_grams_per_unit}" /></div>
+          <button class="secondary-btn" data-action="save-portion">Save portion</button>
+          ${f.portion_overridden ? '<button class="cancel-link" data-action="reset-portion">Reset to default</button>' : ''}
+          <span class="portion-status save-status"></span>
+        </div>
+        <div class="portion-line">
+          ${f.portion_overridden
+            ? `Overridden. Default from name keywords: <span class="mono">${f.default_portion_grams_per_unit}g / ${f.default_portion_unit}</span>`
+            : 'Using the default from name keywords (<span class="mono">frontend/foodDensity.ts</span>).'}
+        </div>
       </div>
     </div>
   `;
@@ -420,16 +448,16 @@ function wireRowEvents() {
 
   const editor = document.querySelector('.editor');
   if (editor) {
-    const gramsPerUnit = Number(editor.dataset.gramsPerUnit);
-    const portionLabel = editor.dataset.portionLabel;
     const recompute = () => {
       const num = (field) => Number(editor.querySelector(`[data-field="${field}"]`).value) || 0;
       const cal = num('calories_per_100g');
       const protein = num('protein_g_per_100g');
       const carbs = num('carbs_g_per_100g');
       const fat = num('fat_g_per_100g');
+      const gramsPerUnit = Number(editor.querySelector('[data-portion-field="grams_per_unit"]').value) || 0;
+      const portionUnit = editor.querySelector('[data-portion-field="unit"]').value;
       editor.querySelector('#portionEquivText').textContent =
-        portionEquivText(cal, protein, carbs, fat, gramsPerUnit, portionLabel);
+        portionEquivText(cal, protein, carbs, fat, gramsPerUnit, portionUnit);
       const check = calorieCheckText(cal, protein, carbs, fat);
       const checkEl = editor.querySelector('#calorieCheckText');
       checkEl.textContent = check.text;
@@ -438,6 +466,7 @@ function wireRowEvents() {
     ['calories_per_100g', 'protein_g_per_100g', 'carbs_g_per_100g', 'fat_g_per_100g'].forEach((field) => {
       editor.querySelector(`[data-field="${field}"]`).addEventListener('input', recompute);
     });
+    editor.querySelectorAll('[data-portion-field]').forEach((input) => input.addEventListener('input', recompute));
   }
 
   document.querySelectorAll('.chip').forEach(chip => {
@@ -503,6 +532,54 @@ function wireRowEvents() {
 
       state.expanded = null;
       await fetchFoods();
+    };
+  });
+
+  document.querySelectorAll('[data-action="save-portion"], [data-action="reset-portion"]').forEach(btn => {
+    btn.onclick = async (ev) => {
+      ev.stopPropagation();
+      const editor = btn.closest('.editor');
+      const itemName = btn.closest('.row').dataset.name;
+      const statusEl = editor.querySelector('.portion-status');
+      const isReset = btn.dataset.action === 'reset-portion';
+
+      btn.disabled = true;
+      statusEl.textContent = isReset ? 'Resetting…' : 'Saving…';
+      statusEl.classList.remove('error');
+
+      const res = isReset
+        ? await fetch('/admin/api/foods/portion?' + new URLSearchParams({ item_name: itemName }), {
+            method: 'DELETE',
+            credentials: 'include',
+          })
+        : await fetch('/admin/api/foods/portion', {
+            method: 'PUT',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              item_name: itemName,
+              unit: editor.querySelector('[data-portion-field="unit"]').value,
+              grams_per_unit: Number(editor.querySelector('[data-portion-field="grams_per_unit"]').value),
+            }),
+          });
+
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        statusEl.textContent = typeof errBody.detail === 'string'
+          ? errBody.detail
+          : Array.isArray(errBody.detail)
+            ? errBody.detail.map(d => d.msg).join('; ')
+            : 'Save failed';
+        statusEl.classList.add('error');
+        btn.disabled = false;
+        return;
+      }
+
+      // Swap the updated food into the current page in place so the editor
+      // stays open on it. Re-rendering discards any unsaved macro edits.
+      const updated = await res.json();
+      latestData.items = latestData.items.map(f => f.item_name === updated.item_name ? updated : f);
+      render();
     };
   });
 }

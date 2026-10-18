@@ -1,3 +1,5 @@
+import type { PortionUnit } from './foodDensity';
+
 // Set via EXPO_PUBLIC_API_BASE (see frontend/.env.example) — Expo inlines
 // EXPO_PUBLIC_* vars at build time, no extra config needed. Falls back to
 // localhost for local dev — must stay "localhost" (not 127.0.0.1) since
@@ -317,6 +319,16 @@ export type EateryMenu = {
 export async function getMenusToday(): Promise<EateryMenu[]> {
   const res = await apiFetch('/menus/today');
   if (!res.ok) throw new Error(`GET /menus/today failed: ${res.status}`);
+  return res.json();
+}
+
+// Admin-set portion units keyed by item name — see docs/adr/0022 and
+// setPortionOverrides in foodDensity.ts.
+export type PortionOverrides = Record<string, { unit: PortionUnit; grams_per_unit: number }>;
+
+export async function getPortionOverrides(): Promise<PortionOverrides> {
+  const res = await apiFetch('/portion-overrides');
+  if (!res.ok) throw new Error(`GET /portion-overrides failed: ${res.status}`);
   return res.json();
 }
 

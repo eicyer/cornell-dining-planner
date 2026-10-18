@@ -3,8 +3,8 @@ gated by get_current_admin (exactly one operator, settings.admin_email).
 
 Lets the admin browse/search every distinct food (NutritionMatch + DietTag,
 keyed by item_name) and correct the per-100g macros/labels the app actually
-runs on. Portion size is deliberately read-only here — see
-app.services.portion_display.
+runs on, plus a per-food portion-unit override (docs/adr/0022) that's
+display-only and stored separately from the per-100g numbers.
 """
 
 from __future__ import annotations
@@ -18,10 +18,10 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_admin
 from app.core.rate_limit import limiter
-from app.db.models import CommonFood, DietTag, NutritionMatch, NutritionSource, User
+from app.db.models import CommonFood, DietTag, NutritionMatch, NutritionSource, PortionOverride, User
 from app.db.session import get_db
 from app.services.llm_enrichment import ALLERGENS, DIET_TAGS
-from app.services.portion_display import get_portion_display
+from app.services.portion_display import UNIT_LABELS, get_heuristic_portion_display, get_portion_display
 
 router = APIRouter(prefix="/admin/api", tags=["admin"])
 
@@ -49,11 +49,16 @@ class FoodOut(BaseModel):
     diet_tags: list[str]
     likely_allergens: list[str]
     resolved_at: datetime.datetime
-    # Read-only, computed from app.services.portion_display — never editable
-    # here, see docs/adr/0007/0016.
+    # What the app actually pictures this food in — the admin override if
+    # set (portion_overridden), else the keyword heuristic. default_portion_*
+    # is always the heuristic's answer, i.e. what "Reset to default" restores.
+    # Edited via PUT/DELETE /foods/portion, not FoodUpdateIn — docs/adr/0022.
     portion_unit: str
     portion_grams_per_unit: float
     portion_label: str
+    portion_overridden: bool
+    default_portion_unit: str
+    default_portion_grams_per_unit: float
     # Read-only, computed — the per-100g macros scaled to one real-world
     # portion, so a reviewer unfamiliar with a dish can sanity-check against
     # something picturable instead of an abstract "per 100g" density.
@@ -105,6 +110,21 @@ class FoodUpdateIn(BaseModel):
         return v
 
 
+class PortionOverrideIn(BaseModel):
+    item_name: str
+    unit: str
+    # Upper bound is a typo guard, not a real-world limit — the largest
+    # heuristic unit is a 300g plate.
+    grams_per_unit: float = Field(gt=0, le=1000)
+
+    @field_validator("unit")
+    @classmethod
+    def _validate_unit(cls, v: str) -> str:
+        if v not in UNIT_LABELS:
+            raise ValueError(f"Unknown unit {v!r}, must be one of {list(UNIT_LABELS)}")
+        return v
+
+
 def _expected_calories_per_100g(protein_g: float, carbs_g: float, fat_g: float) -> float:
     """Atwater factors: protein/carbs ~4 cal/g, fat ~9 cal/g."""
     return protein_g * 4 + carbs_g * 4 + fat_g * 9
@@ -116,8 +136,9 @@ def _calorie_mismatch(calories: float, expected: float) -> bool:
     return abs(expected - calories) / calories > MACRO_CALORIE_MISMATCH_TOLERANCE
 
 
-def _food_out(nutrition: NutritionMatch, diet: DietTag | None) -> FoodOut:
-    portion = get_portion_display(nutrition.item_name)
+def _food_out(nutrition: NutritionMatch, diet: DietTag | None, override: PortionOverride | None) -> FoodOut:
+    portion = get_portion_display(nutrition.item_name, override)
+    default_portion = get_heuristic_portion_display(nutrition.item_name)
     portion_scale = portion.grams_per_unit / 100
     expected_calories = _expected_calories_per_100g(
         nutrition.protein_g_per_100g, nutrition.carbs_g_per_100g, nutrition.fat_g_per_100g
@@ -146,6 +167,9 @@ def _food_out(nutrition: NutritionMatch, diet: DietTag | None) -> FoodOut:
         portion_unit=portion.unit,
         portion_grams_per_unit=portion.grams_per_unit,
         portion_label=portion.label,
+        portion_overridden=override is not None,
+        default_portion_unit=default_portion.unit,
+        default_portion_grams_per_unit=default_portion.grams_per_unit,
         portion_calories=round(nutrition.calories_per_100g * portion_scale, 1),
         portion_protein_g=round(nutrition.protein_g_per_100g * portion_scale, 1),
         portion_carbs_g=round(nutrition.carbs_g_per_100g * portion_scale, 1),
@@ -154,6 +178,19 @@ def _food_out(nutrition: NutritionMatch, diet: DietTag | None) -> FoodOut:
         calorie_mismatch=mismatch,
         needs_attention=needs_attention,
     )
+
+
+def _get_nutrition_or_404(db: Session, item_name: str) -> NutritionMatch:
+    nutrition = db.query(NutritionMatch).filter(NutritionMatch.item_name == item_name).one_or_none()
+    if nutrition is None:
+        raise HTTPException(status_code=404, detail="Food not found")
+    return nutrition
+
+
+def _food_out_by_name(db: Session, nutrition: NutritionMatch) -> FoodOut:
+    diet = db.query(DietTag).filter(DietTag.item_name == nutrition.item_name).one_or_none()
+    override = db.query(PortionOverride).filter(PortionOverride.item_name == nutrition.item_name).one_or_none()
+    return _food_out(nutrition, diet, override)
 
 
 @router.get("/foods", response_model=FoodListOut)
@@ -174,14 +211,17 @@ def list_foods(
         query = query.filter(NutritionMatch.source == NutritionSource(source))
     nutrition_rows = query.all()
 
+    names = [r.item_name for r in nutrition_rows]
     diet_by_name = {
-        d.item_name: d
-        for d in db.query(DietTag)
-        .filter(DietTag.item_name.in_([r.item_name for r in nutrition_rows]))
-        .all()
+        d.item_name: d for d in db.query(DietTag).filter(DietTag.item_name.in_(names)).all()
+    } if nutrition_rows else {}
+    override_by_name = {
+        o.item_name: o for o in db.query(PortionOverride).filter(PortionOverride.item_name.in_(names)).all()
     } if nutrition_rows else {}
 
-    foods = [_food_out(r, diet_by_name.get(r.item_name)) for r in nutrition_rows]
+    foods = [
+        _food_out(r, diet_by_name.get(r.item_name), override_by_name.get(r.item_name)) for r in nutrition_rows
+    ]
 
     if needs_attention is not None:
         foods = [f for f in foods if f.needs_attention == needs_attention]
@@ -205,11 +245,7 @@ def get_food_detail(
     db: Session = Depends(get_db),
     _admin: User = Depends(get_current_admin),
 ) -> FoodOut:
-    nutrition = db.query(NutritionMatch).filter(NutritionMatch.item_name == item_name).one_or_none()
-    if nutrition is None:
-        raise HTTPException(status_code=404, detail="Food not found")
-    diet = db.query(DietTag).filter(DietTag.item_name == item_name).one_or_none()
-    return _food_out(nutrition, diet)
+    return _food_out_by_name(db, _get_nutrition_or_404(db, item_name))
 
 
 @router.put("/foods/detail", response_model=FoodOut)
@@ -246,8 +282,45 @@ def update_food_detail(
 
     db.commit()
     db.refresh(nutrition)
-    db.refresh(diet)
-    return _food_out(nutrition, diet)
+    return _food_out_by_name(db, nutrition)
+
+
+@router.put("/foods/portion", response_model=FoodOut)
+@limiter.limit("30/minute")
+def set_portion_override(
+    request: Request,
+    body: PortionOverrideIn,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(get_current_admin),
+) -> FoodOut:
+    """Pin this food's portion unit, overriding the keyword heuristic — see
+    docs/adr/0022. Separate from update_food_detail so saving macros never
+    freezes the heuristic's current answer as an override."""
+    nutrition = _get_nutrition_or_404(db, body.item_name)
+    override = db.query(PortionOverride).filter(PortionOverride.item_name == body.item_name).one_or_none()
+    if override is None:
+        override = PortionOverride(item_name=body.item_name)
+        db.add(override)
+    override.unit = body.unit
+    override.grams_per_unit = body.grams_per_unit
+    override.updated_at = datetime.datetime.utcnow()
+    db.commit()
+    return _food_out_by_name(db, nutrition)
+
+
+@router.delete("/foods/portion", response_model=FoodOut)
+@limiter.limit("30/minute")
+def clear_portion_override(
+    request: Request,
+    item_name: str,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(get_current_admin),
+) -> FoodOut:
+    """Drop the override so this food falls back to the keyword heuristic."""
+    nutrition = _get_nutrition_or_404(db, item_name)
+    db.query(PortionOverride).filter(PortionOverride.item_name == item_name).delete()
+    db.commit()
+    return _food_out_by_name(db, nutrition)
 
 
 # --- Common Foods catalog — see docs/adr/0020. A hand-curated reference of

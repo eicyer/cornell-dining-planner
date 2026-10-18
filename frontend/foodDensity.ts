@@ -123,12 +123,24 @@ const UNIT_LABELS: Record<PortionUnit, { label: string; pluralLabel: string }> =
   piece: { label: 'piece', pluralLabel: 'pieces' },
 };
 
+// Admin-set per-food units (docs/adr/0022), loaded once at app boot via
+// setPortionOverrides. Checked before UNIT_RULES, so a food the keyword
+// heuristic gets wrong can be fixed from the admin panel without a code
+// change. Empty (heuristic only) until loaded or if the fetch fails.
+let portionOverrides: Record<string, { unit: PortionUnit; grams_per_unit: number }> = {};
+
+export function setPortionOverrides(overrides: typeof portionOverrides): void {
+  portionOverrides = overrides;
+}
+
 // cup/plate are volumetric and read naturally in quarters ("¾ cup"); the
 // countable units read more naturally in halves ("1½ scoops").
 const QUARTER_UNITS = new Set<PortionUnit>(['cup', 'plate']);
 
 /** The everyday unit + grams-per-unit this food is pictured in. */
 export function getPortionUnit(item: { name: string }): PortionUnitInfo {
+  const override = portionOverrides[item.name];
+  if (override) return { unit: override.unit, gramsPerUnit: override.grams_per_unit, ...UNIT_LABELS[override.unit] };
   const lower = item.name.toLowerCase();
   const rule = UNIT_RULES.find((r) => r.keywords.some((k) => matchesKeyword(k, lower))) ?? DEFAULT_RULE;
   return { unit: rule.unit, gramsPerUnit: rule.gramsPerUnit, ...UNIT_LABELS[rule.unit] };
