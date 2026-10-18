@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.clock import ithaca_today
-from app.db.models import DietTag, Eatery, MenuEvent, MenuItem, NutritionMatch
+from app.db.models import DietTag, Eatery, MenuEvent, MenuItem, NutritionMatch, PortionOverride
 from app.db.session import get_db
 
 router = APIRouter()
@@ -115,3 +115,19 @@ def menus_today(db: Session = Depends(get_db)) -> list[EateryOut]:
         )
 
     return out
+
+
+class PortionOverrideOut(BaseModel):
+    unit: str
+    grams_per_unit: float
+
+
+@router.get("/portion-overrides", response_model=dict[str, PortionOverrideOut])
+def portion_overrides(db: Session = Depends(get_db)) -> dict[str, PortionOverrideOut]:
+    """Admin-set portion units keyed by item name, which the frontend's
+    getPortionUnit checks before its keyword heuristic — see docs/adr/0022.
+    Public like /menus/today: it's menu display data, not user data."""
+    return {
+        o.item_name: PortionOverrideOut(unit=o.unit, grams_per_unit=o.grams_per_unit)
+        for o in db.query(PortionOverride).all()
+    }
