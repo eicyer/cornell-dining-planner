@@ -225,6 +225,27 @@ class DietTag(Base):
     )
 
 
+class PortionOverride(Base):
+    """Admin-set portion unit for a normalized item name, taking precedence
+    over frontend/foodDensity.ts's keyword heuristic — see docs/adr/0022.
+    Display-only (how grams are pictured/stepped in the UI), never a serving
+    size and never read by meal crafting or nutrition math. Kept out of
+    NutritionMatch so re-enrichment can't overwrite it."""
+
+    __tablename__ = "portion_overrides"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    item_name: Mapped[str] = mapped_column(String, unique=True, index=True)
+
+    # One of app.services.portion_display.UNIT_LABELS' keys.
+    unit: Mapped[str] = mapped_column(String)
+    grams_per_unit: Mapped[float] = mapped_column(Float)
+
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow
+    )
+
+
 class CommonFood(Base):
     """A hand-curated, admin-editable reference catalog of common
     breakfast/lunch/dinner foods by plate role — see docs/adr/0020. Distinct
