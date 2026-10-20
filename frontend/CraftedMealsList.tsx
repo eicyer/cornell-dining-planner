@@ -93,6 +93,7 @@ export default function CraftedMealsList({
                 perMealTarget={perMealTarget}
                 status={status}
                 onLog={(items) => handleLog(eatery, items)}
+                onLogItem={(item) => logMeal(eatery.id, eatery.meal_period ?? '', [item])}
               />
             )}
           </View>

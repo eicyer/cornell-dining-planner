@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { CraftedItem, CraftedMeal, PLATE_ROLE_ORDER, PlateRole, Totals } from '../api';
 import { assignPlateColors } from '../foodColors';
 import { describePortion } from '../foodDensity';
-import { colors, space, type } from '../theme';
+import { colors, interaction, space, type } from '../theme';
 import Button from './Button';
+import { success } from '../haptics';
 import ColorDot from './ColorDot';
 import PortionStepper from './PortionStepper';
 import ProgressBar from './ProgressBar';
@@ -68,12 +69,20 @@ const LOG_BUTTON_LABEL: Record<LogStatus, string> = {
   error: 'Failed — try again',
 };
 
+const LOG_ITEM_LABEL: Record<LogStatus, string> = {
+  idle: 'Log just this',
+  saving: 'Logging…',
+  done: 'Logged ✓',
+  error: 'Failed — retry',
+};
+
 export default function CraftedMealCard({
   meal,
   mealPeriod,
   perMealTarget,
   status,
   onLog,
+  onLogItem,
 }: {
   meal: CraftedMeal;
   mealPeriod: string;
@@ -83,6 +92,10 @@ export default function CraftedMealCard({
   // per-item PortionStepper below), not necessarily the suggested amounts —
   // the caller logs exactly what's passed here.
   onLog: (items: { name: string; grams: number }[]) => void;
+  // Logs one item on its own (as its own single-item Logged Meal), for
+  // when the user only takes part of the suggested plate. Should reject on
+  // failure — per-item status is tracked here, not by the caller.
+  onLogItem: (item: { name: string; grams: number }) => Promise<unknown>;
 }) {
   // Keyed by item name, seeded from the suggestion. Reset on every `meal`
   // change (not just on mount) — the parent can hand this component a new
@@ -90,8 +103,10 @@ export default function CraftedMealCard({
   // a fresh candidate for the same eatery slot), and stale gram overrides
   // from the previous meal must not silently carry over.
   const [grams, setGrams] = useState<Record<string, number>>({});
+  const [itemStatus, setItemStatus] = useState<Record<string, LogStatus>>({});
   useEffect(() => {
     setGrams(Object.fromEntries(meal.items.map((i) => [i.name, i.grams])));
+    setItemStatus({});
   }, [meal]);
 
   const scaledItems = useMemo(
@@ -107,11 +122,34 @@ export default function CraftedMealCard({
     setGrams((g) => ({ ...g, [name]: Math.max(0, newGrams) }));
   }
 
+  // Items already logged one-by-one are left out of the whole-meal log so
+  // nothing gets counted twice in the diary.
+  const isItemLogged = (name: string) => itemStatus[name] === 'done';
+  const remainingItems = scaledItems.filter((i) => i.grams > 0 && !isItemLogged(i.name));
+  const someItemsLogged = scaledItems.some((i) => isItemLogged(i.name));
+  const mealDone = status === 'done' || (someItemsLogged && remainingItems.length === 0);
+
   function handleLog() {
     // A stepper dragged to 0g reads as "leave this off the plate" rather
     // than logging a zero-gram line item.
-    onLog(scaledItems.filter((i) => i.grams > 0).map((i) => ({ name: i.name, grams: i.grams })));
+    onLog(remainingItems.map((i) => ({ name: i.name, grams: i.grams })));
   }
+
+  async function handleLogItem(item: CraftedItem) {
+    setItemStatus((s) => ({ ...s, [item.name]: 'saving' }));
+    try {
+      await onLogItem({ name: item.name, grams: item.grams });
+      setItemStatus((s) => ({ ...s, [item.name]: 'done' }));
+      success();
+    } catch {
+      setItemStatus((s) => ({ ...s, [item.name]: 'error' }));
+    }
+  }
+
+  const logButtonLabel =
+    mealDone ? LOG_BUTTON_LABEL.done
+    : status === 'idle' && someItemsLogged ? 'Log the rest →'
+    : LOG_BUTTON_LABEL[status];
 
   return (
     <View style={styles.meal}>
@@ -125,6 +163,9 @@ export default function CraftedMealCard({
           {group.items.map((item) => {
             const original = meal.items.find((i) => i.name === item.name);
             const portion = describePortion(item);
+            // Once the whole meal is logged, a per-item log would double-count.
+            const thisItemStatus = status === 'done' && !isItemLogged(item.name) ? 'done' : itemStatus[item.name] ?? 'idle';
+            const itemLogDisabled = thisItemStatus === 'saving' || thisItemStatus === 'done' || item.grams <= 0;
             return (
               <View key={item.name} style={styles.item}>
                 <View style={styles.itemRow}>
@@ -137,11 +178,24 @@ export default function CraftedMealCard({
                     originalGrams={original?.grams ?? item.grams}
                     grams={item.grams}
                     onChange={(g) => handleGramsChange(item.name, g)}
+                    disabled={thisItemStatus === 'done'}
                   />
                 </View>
-                <Text style={styles.itemCaption}>
-                  {Math.round(item.grams)}g{portion ? ` · ${portion}` : ''} · {Math.round(item.calories)} cal
-                </Text>
+                <View style={styles.itemFooter}>
+                  <Text style={styles.itemCaption}>
+                    {Math.round(item.grams)}g{portion ? ` · ${portion}` : ''} · {Math.round(item.calories)} cal
+                  </Text>
+                  <Pressable
+                    onPress={() => handleLogItem(item)}
+                    disabled={itemLogDisabled}
+                    hitSlop={14}
+                    style={({ pressed }) => pressed && styles.pressed}
+                  >
+                    <Text style={[styles.logItemText, itemLogDisabled && thisItemStatus !== 'done' && styles.logItemTextDisabled]}>
+                      {LOG_ITEM_LABEL[thisItemStatus]}
+                    </Text>
+                  </Pressable>
+                </View>
               </View>
             );
           })}
@@ -157,10 +211,10 @@ export default function CraftedMealCard({
       </View>
 
       <Button
-        label={LOG_BUTTON_LABEL[status]}
-        variant={status === 'done' ? 'outline' : 'solid'}
+        label={logButtonLabel}
+        variant={mealDone ? 'outline' : 'solid'}
         onPress={handleLog}
-        disabled={status === 'saving' || status === 'done'}
+        disabled={status === 'saving' || mealDone || remainingItems.length === 0}
         style={styles.logButton}
       />
     </View>
@@ -178,7 +232,11 @@ const styles = StyleSheet.create({
   itemRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   itemNameRow: { flexDirection: 'row', alignItems: 'center', flexShrink: 1, paddingRight: space.sm },
   itemName: { ...type.body, fontSize: 14, flexShrink: 1 },
-  itemCaption: { fontFamily: 'IBMPlexMono_400Regular', color: colors.inkSecondary, fontSize: 12, marginTop: 2 },
+  itemFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 },
+  itemCaption: { fontFamily: 'IBMPlexMono_400Regular', color: colors.inkSecondary, fontSize: 12, flexShrink: 1 },
+  logItemText: { ...type.kicker, fontSize: 11, color: colors.accent },
+  logItemTextDisabled: { color: colors.inkTertiary },
+  pressed: { opacity: interaction.pressedOpacity },
   totals: { marginTop: space.sm, paddingTop: space.sm, borderTopWidth: 1, borderTopColor: colors.hairline },
   totalsText: { ...type.monoEmphasis },
   logButton: { marginTop: space.md },

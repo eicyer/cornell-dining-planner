@@ -177,6 +177,9 @@ export default function EateryDetailScreen({
                   perMealTarget={perMealTarget}
                   status={optionLogStatus[i] ?? 'idle'}
                   onLog={(items) => handleLogOption(i, items)}
+                  // Deliberately no onLogged here: that jumps to the Diary, which
+                  // would cut off logging a second item from the same plate.
+                  onLogItem={(item) => logMeal(eatery.id, options.meal_period ?? '', [item])}
                 />
               </View>
             ))}
@@ -195,6 +198,7 @@ export default function EateryDetailScreen({
                     perMealTarget={perMealTarget}
                     status={nextMealLogStatus[next.meal_period] ?? 'idle'}
                     onLog={(items) => handleLogNextMeal(next.meal_period, items)}
+                    onLogItem={(item) => logMeal(eatery.id, next.meal_period, [item])}
                   />
                 </View>
               ) : (
