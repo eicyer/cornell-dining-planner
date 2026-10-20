@@ -13,6 +13,8 @@ MUTATING_REQUESTS = [
     ("POST", "/preferences/station-survey/1", {"responses": []}),
     ("POST", "/logged-meals", {"eatery_id": 1, "meal_period": "Lunch", "items": []}),
     ("PATCH", "/logged-meals/1", {"liked": True}),
+    ("PATCH", "/logged-meals/1", {"items": [{"name": "x", "grams": 100}]}),
+    ("DELETE", "/logged-meals/1", None),
     ("PUT", "/admin/api/foods/detail", {}),
     ("DELETE", "/auth/me", None),
 ]

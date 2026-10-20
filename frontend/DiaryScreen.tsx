@@ -1,13 +1,10 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import ThumbsUp from 'lucide-react-native/icons/thumbs-up';
-import ThumbsDown from 'lucide-react-native/icons/thumbs-down';
+import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { DaySummary, LoggedMeal, Preferences, getLoggedMealsSummary, getLoggedMealsToday, getPreferences, rateMeal } from './api';
-import Icon from './components/Icon';
+import LoggedMealCard from './components/LoggedMealCard';
 import ProgressBar from './components/ProgressBar';
 import ProgressRing from './components/ProgressRing';
 import TopNav from './components/TopNav';
-import { describePortion } from './foodDensity';
 import { light } from './haptics';
 import { colors, space, type } from './theme';
 
@@ -100,6 +97,26 @@ export default function DiaryScreen({
     setMeals((prev) => (prev ? prev.map((m) => (m.id === meal.id ? updated : m)) : prev));
   }
 
+  // Edits and deletes shift today's totals and the week trend, which the
+  // server computes — refetch the summary rather than re-deriving it here.
+  async function refreshSummary() {
+    try {
+      setSummary(await getLoggedMealsSummary(7));
+    } catch {
+      // Keep the stale summary; pull-to-refresh will retry.
+    }
+  }
+
+  function handleChanged(updated: LoggedMeal) {
+    setMeals((prev) => (prev ? prev.map((m) => (m.id === updated.id ? updated : m)) : prev));
+    refreshSummary();
+  }
+
+  function handleDeleted(mealId: number) {
+    setMeals((prev) => (prev ? prev.filter((m) => m.id !== mealId) : prev));
+    refreshSummary();
+  }
+
   if (error) {
     return (
       <View style={styles.center}>
@@ -151,38 +168,13 @@ export default function DiaryScreen({
         <Text style={styles.empty}>Nothing logged yet today.</Text>
       ) : (
         meals.map((meal) => (
-          <View key={meal.id} style={styles.mealCard}>
-            <View style={styles.mealHeader}>
-              <Text style={styles.mealEatery}>
-                {meal.eatery_name} · {meal.meal_period}
-              </Text>
-              <View style={styles.rateButtons}>
-                {/* iconSize.sm (16px) + hitSlop 14 on each edge = 44pt tap
-                    target (touchTarget.min) — the glyph itself stays small,
-                    only the invisible tap area grows. See Phase 6 audit. */}
-                <Pressable onPress={() => handleRate(meal, true)} hitSlop={14}>
-                  <Icon icon={ThumbsUp} size="sm" color={meal.liked === true ? 'accent' : 'inkSecondary'} />
-                </Pressable>
-                <Pressable onPress={() => handleRate(meal, false)} hitSlop={14}>
-                  <Icon icon={ThumbsDown} size="sm" color={meal.liked === false ? 'accent' : 'inkSecondary'} />
-                </Pressable>
-              </View>
-            </View>
-            {meal.items.map((item) => {
-              const portion = describePortion(item);
-              return (
-                <Text key={item.name} style={styles.itemText}>
-                  {item.name}{' '}
-                  <Text style={styles.itemFigures}>
-                    ({Math.round(item.grams)}g{portion ? ` · ${portion}` : ''}) — {Math.round(item.calories)} cal
-                  </Text>
-                </Text>
-              );
-            })}
-            <Text style={styles.mealTotals}>
-              {Math.round(meal.totals.calories)} cal · {Math.round(meal.totals.protein_g)}g protein
-            </Text>
-          </View>
+          <LoggedMealCard
+            key={meal.id}
+            meal={meal}
+            onRate={(liked) => handleRate(meal, liked)}
+            onChanged={handleChanged}
+            onDeleted={handleDeleted}
+          />
         ))
       )}
 
@@ -245,20 +237,6 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.hairline,
   },
   empty: { fontFamily: 'Fraunces_500Medium_Italic', fontSize: 15, color: colors.inkSecondary, marginBottom: space.lg },
-  mealCard: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.hairline,
-    paddingVertical: space.lg,
-  },
-  mealHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: space.sm },
-  mealEatery: { fontFamily: 'Fraunces_600SemiBold', fontSize: 16, color: colors.ink },
-  // gap must clear 2x hitSlop (14+14=28) so the like/dislike tap areas never
-  // overlap — these are opposite-meaning actions, so a mis-tap here is worse
-  // than most. See Phase 6 audit.
-  rateButtons: { flexDirection: 'row', gap: space.xxl },
-  itemText: { ...type.body, fontSize: 14 },
-  itemFigures: { ...type.mono, fontSize: 13 },
-  mealTotals: { ...type.monoEmphasis, marginTop: space.sm },
   weekBars: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: space.lg },
   weekBarColumn: { alignItems: 'center', flex: 1 },
   weekBarTrack: {

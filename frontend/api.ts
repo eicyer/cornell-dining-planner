@@ -385,6 +385,24 @@ export async function rateMeal(mealId: number, liked: boolean | null): Promise<L
   return res.json();
 }
 
+// Replaces a logged meal's items. Only names/grams are sent — the server
+// revalidates them against the meal's own Menu Event and recomputes all
+// nutrition itself (docs/adr/0004), so the response is the source of truth.
+export async function updateMealItems(mealId: number, items: { name: string; grams: number }[]): Promise<LoggedMeal> {
+  const res = await apiFetch(`/logged-meals/${mealId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ items }),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `PATCH /logged-meals/${mealId} failed: ${res.status}`));
+  return res.json();
+}
+
+export async function deleteMeal(mealId: number): Promise<void> {
+  const res = await apiFetch(`/logged-meals/${mealId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`DELETE /logged-meals/${mealId} failed: ${res.status}`);
+}
+
 export async function getLoggedMealsToday(): Promise<LoggedMeal[]> {
   const res = await apiFetch('/logged-meals');
   if (!res.ok) throw new Error(`GET /logged-meals failed: ${res.status}`);
