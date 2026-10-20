@@ -326,6 +326,10 @@ class LoggedMeal(Base):
     """Dining-hall food only — not a general food diary. See docs/adr/0004."""
 
     __tablename__ = "logged_meals"
+    # One Logged Meal per user per Menu Event — logging again appends to it
+    # (docs/adr/0023). Postgres treats NULL menu_event_ids as distinct, so
+    # meals whose menu was removed never collide.
+    __table_args__ = (UniqueConstraint("user_id", "menu_event_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
