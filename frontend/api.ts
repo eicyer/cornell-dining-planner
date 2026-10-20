@@ -346,12 +346,19 @@ export type LoggedMealItem = {
 
 export type Totals = { calories: number; protein_g: number; carbs_g: number; fat_g: number };
 
+// The Diary's four fixed sections, in display order. Derived server-side
+// from each Logged Meal's meal period (docs/adr/0023) — read
+// `meal_section` off the API rather than mapping meal periods here.
+export const MEAL_SECTIONS = ['breakfast', 'lunch', 'dinner', 'snacks'] as const;
+export type MealSection = (typeof MEAL_SECTIONS)[number];
+
 export type LoggedMeal = {
   id: number;
   date: string;
   eatery_id: number;
   eatery_name: string;
   meal_period: string;
+  meal_section: MealSection;
   items: LoggedMealItem[];
   totals: Totals;
   liked: boolean | null;
@@ -403,8 +410,9 @@ export async function deleteMeal(mealId: number): Promise<void> {
   if (!res.ok) throw new Error(`DELETE /logged-meals/${mealId} failed: ${res.status}`);
 }
 
-export async function getLoggedMealsToday(): Promise<LoggedMeal[]> {
-  const res = await apiFetch('/logged-meals');
+// `date` is a local "YYYY-MM-DD"; omitted means the server's today.
+export async function getLoggedMeals(date?: string): Promise<LoggedMeal[]> {
+  const res = await apiFetch(date ? `/logged-meals?date=${date}` : '/logged-meals');
   if (!res.ok) throw new Error(`GET /logged-meals failed: ${res.status}`);
   return res.json();
 }

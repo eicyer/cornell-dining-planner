@@ -15,6 +15,11 @@ import PortionStepper from './PortionStepper';
 
 type Mode = 'view' | 'edit' | 'confirmDelete';
 
+// One eatery's Logged Meal inside a Diary Meal Section (MealSectionBlock):
+// an eatery label, then one row per food with its calories right-aligned.
+// The section header carries the section total, so there's no per-meal
+// total in view mode.
+//
 // Edits only adjust portions or drop items from what was already logged —
 // adding a new item would need that Menu Event's full menu, which the diary
 // doesn't load. The backend recomputes nutrition on save; the totals shown
@@ -169,17 +174,17 @@ export default function LoggedMealCard({
           {meal.items.map((item) => {
             const portion = describePortion(item);
             return (
-              <Text key={item.name} style={styles.itemText}>
-                {item.name}{' '}
-                <Text style={styles.itemFigures}>
-                  ({Math.round(item.grams)}g{portion ? ` · ${portion}` : ''}) — {Math.round(item.calories)} cal
-                </Text>
-              </Text>
+              <View key={item.name} style={styles.itemRow}>
+                <View style={styles.itemNameColumn}>
+                  <Text style={styles.itemText}>{item.name}</Text>
+                  <Text style={styles.itemFigures}>
+                    {Math.round(item.grams)}g{portion ? ` · ${portion}` : ''}
+                  </Text>
+                </View>
+                <Text style={styles.itemCalories}>{Math.round(item.calories)}</Text>
+              </View>
             );
           })}
-          <Text style={styles.mealTotals}>
-            {Math.round(meal.totals.calories)} cal · {Math.round(meal.totals.protein_g)}g protein
-          </Text>
         </>
       )}
 
@@ -205,16 +210,19 @@ const styles = StyleSheet.create({
   mealCard: {
     borderBottomWidth: 1,
     borderBottomColor: colors.hairline,
-    paddingVertical: space.lg,
+    paddingVertical: space.md,
   },
-  mealHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: space.sm },
-  mealEatery: { fontFamily: 'Fraunces_600SemiBold', fontSize: 16, color: colors.ink, flexShrink: 1, paddingRight: space.sm },
+  mealHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: space.xs },
+  mealEatery: { ...type.kicker, flexShrink: 1, paddingRight: space.sm },
   // gap must clear 2x hitSlop (14+14=28) so neighboring tap areas never
   // overlap — like/dislike are opposite-meaning actions, so a mis-tap here
   // is worse than most. See Phase 6 audit.
   headerActions: { flexDirection: 'row', gap: space.xxl },
+  itemRow: { flexDirection: 'row', alignItems: 'baseline', paddingVertical: space.xs, gap: space.md },
+  itemNameColumn: { flex: 1 },
   itemText: { ...type.body, fontSize: 14 },
-  itemFigures: { ...type.mono, fontSize: 13 },
+  itemFigures: { ...type.mono, fontSize: 12, color: colors.inkTertiary },
+  itemCalories: { ...type.mono, color: colors.ink },
   mealTotals: { ...type.monoEmphasis, marginTop: space.sm },
   editRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: space.sm, gap: space.md },
   removeButton: { paddingRight: space.xs },
