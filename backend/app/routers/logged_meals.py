@@ -45,8 +45,14 @@ class LoggedMealOut(BaseModel):
     liked: bool | None
 
 
-class RatingIn(BaseModel):
-    liked: bool | None
+class LoggedMealUpdate(BaseModel):
+    """Every field is optional — only the ones actually sent are applied
+    (so `{"liked": null}` clears a rating, while omitting `liked` leaves it
+    alone). Eatery/date/meal_period can't change: an edit corrects what was
+    eaten at that Menu Event, it doesn't move the meal to another one."""
+
+    liked: bool | None = None
+    items: list[LoggedMealItemIn] | None = None
 
 
 class DaySummary(BaseModel):
@@ -87,28 +93,11 @@ def _to_out(db: Session, meal: LoggedMeal) -> LoggedMealOut:
     )
 
 
-@router.post("/logged-meals", response_model=LoggedMealOut)
-def log_meal(body: LoggedMealIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Only items actually on the given eatery/date/meal_period's menu can be
-    logged — see docs/adr/0004 (dining-hall food only). Nutrition is always
-    recomputed server-side from cached per-100g data, never trusted from the
-    client, matching the arithmetic-not-LLM-or-client principle used
-    throughout (docs/adr/0003, 0007)."""
-    date = body.date or datetime.date.today()
-
-    eatery = db.get(Eatery, body.eatery_id)
-    if eatery is None:
-        raise HTTPException(status_code=404, detail="Eatery not found")
-
-    menu_event = (
-        db.query(MenuEvent)
-        .filter(MenuEvent.eatery_id == body.eatery_id, MenuEvent.date == date, MenuEvent.meal_period == body.meal_period)
-        .one_or_none()
-    )
-    if menu_event is None:
-        raise HTTPException(status_code=404, detail="No menu found for that eatery/date/meal period")
-
-    if not body.items:
+def _compute_items(db: Session, menu_event: MenuEvent, items_in: list[LoggedMealItemIn]) -> list[LoggedMealItemOut]:
+    """Validates items against the Menu Event's live menu and recomputes
+    their nutrition from cached per-100g data — shared by logging and
+    editing so neither path ever trusts client-sent numbers (docs/adr/0004)."""
+    if not items_in:
         raise HTTPException(status_code=400, detail="Must log at least one item")
 
     menu_items = db.query(MenuItem).filter(MenuItem.menu_event_id == menu_event.id).all()
@@ -116,11 +105,11 @@ def log_meal(body: LoggedMealIn, user: User = Depends(get_current_user), db: Ses
 
     nutrition_by_name = {
         n.item_name: n
-        for n in db.query(NutritionMatch).filter(NutritionMatch.item_name.in_([i.name for i in body.items])).all()
+        for n in db.query(NutritionMatch).filter(NutritionMatch.item_name.in_([i.name for i in items_in])).all()
     }
 
     computed_items: list[LoggedMealItemOut] = []
-    for item_in in body.items:
+    for item_in in items_in:
         menu_item = menu_items_by_name.get(item_in.name)
         if menu_item is None:
             raise HTTPException(status_code=400, detail=f"{item_in.name!r} is not on this menu")
@@ -143,6 +132,32 @@ def log_meal(body: LoggedMealIn, user: User = Depends(get_current_user), db: Ses
             )
         )
 
+    return computed_items
+
+
+@router.post("/logged-meals", response_model=LoggedMealOut)
+def log_meal(body: LoggedMealIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Only items actually on the given eatery/date/meal_period's menu can be
+    logged — see docs/adr/0004 (dining-hall food only). Nutrition is always
+    recomputed server-side from cached per-100g data, never trusted from the
+    client, matching the arithmetic-not-LLM-or-client principle used
+    throughout (docs/adr/0003, 0007)."""
+    date = body.date or datetime.date.today()
+
+    eatery = db.get(Eatery, body.eatery_id)
+    if eatery is None:
+        raise HTTPException(status_code=404, detail="Eatery not found")
+
+    menu_event = (
+        db.query(MenuEvent)
+        .filter(MenuEvent.eatery_id == body.eatery_id, MenuEvent.date == date, MenuEvent.meal_period == body.meal_period)
+        .one_or_none()
+    )
+    if menu_event is None:
+        raise HTTPException(status_code=404, detail="No menu found for that eatery/date/meal period")
+
+    computed_items = _compute_items(db, menu_event, body.items)
+
     meal = LoggedMeal(
         user_id=user.id,
         menu_event_id=menu_event.id,
@@ -158,16 +173,42 @@ def log_meal(body: LoggedMealIn, user: User = Depends(get_current_user), db: Ses
     return _to_out(db, meal)
 
 
-@router.patch("/logged-meals/{meal_id}", response_model=LoggedMealOut)
-def rate_meal(meal_id: int, body: RatingIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def _get_own_meal(db: Session, meal_id: int, user: User) -> LoggedMeal:
+    # Someone else's meal 404s rather than 403s so ids can't be probed.
     meal = db.get(LoggedMeal, meal_id)
     if meal is None or meal.user_id != user.id:
         raise HTTPException(status_code=404, detail="Logged meal not found")
+    return meal
 
-    meal.liked = body.liked
+
+@router.patch("/logged-meals/{meal_id}", response_model=LoggedMealOut)
+def update_meal(
+    meal_id: int, body: LoggedMealUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    meal = _get_own_meal(db, meal_id, user)
+
+    if "liked" in body.model_fields_set:
+        meal.liked = body.liked
+
+    if "items" in body.model_fields_set:
+        menu_event = db.get(MenuEvent, meal.menu_event_id) if meal.menu_event_id is not None else None
+        if menu_event is None:
+            raise HTTPException(status_code=400, detail="This meal's menu is no longer available to edit against")
+        # An empty list is rejected rather than treated as "remove
+        # everything" — deleting the meal is its own explicit action.
+        computed_items = _compute_items(db, menu_event, body.items or [])
+        meal.items = [i.model_dump() for i in computed_items]
+        meal.totals = _totals_from_items(computed_items)
+
     db.commit()
     db.refresh(meal)
     return _to_out(db, meal)
+
+
+@router.delete("/logged-meals/{meal_id}", status_code=204)
+def delete_meal(meal_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    db.delete(_get_own_meal(db, meal_id, user))
+    db.commit()
 
 
 @router.get("/logged-meals", response_model=list[LoggedMealOut])
