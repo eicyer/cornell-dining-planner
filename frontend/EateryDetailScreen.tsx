@@ -72,15 +72,17 @@ export default function EateryDetailScreen({
   }, [eatery.id]);
 
   async function handleLogOption(index: number, items: { name: string; grams: number }[]) {
-    if (!options || !options.meal_period) return;
+    if (!options || !options.meal_period) return null;
     setOptionLogStatus((s) => ({ ...s, [index]: 'saving' }));
     try {
       const logged = await logMeal(eatery.id, options.meal_period, items);
       setOptionLogStatus((s) => ({ ...s, [index]: 'done' }));
       success();
       onLogged(logged);
+      return logged;
     } catch {
       setOptionLogStatus((s) => ({ ...s, [index]: 'error' }));
+      return null;
     }
   }
 
@@ -91,8 +93,10 @@ export default function EateryDetailScreen({
       setNextMealLogStatus((s) => ({ ...s, [mealPeriod]: 'done' }));
       success();
       onLogged(logged);
+      return logged;
     } catch {
       setNextMealLogStatus((s) => ({ ...s, [mealPeriod]: 'error' }));
+      return null;
     }
   }
 
@@ -177,6 +181,7 @@ export default function EateryDetailScreen({
                   perMealTarget={perMealTarget}
                   status={optionLogStatus[i] ?? 'idle'}
                   onLog={(items) => handleLogOption(i, items)}
+                  onUndoLog={() => setOptionLogStatus((s) => ({ ...s, [i]: 'idle' }))}
                   // Deliberately no onLogged here: that jumps to the Diary, which
                   // would cut off logging a second item from the same plate.
                   onLogItem={(item) => logMeal(eatery.id, options.meal_period ?? '', [item])}
@@ -198,6 +203,7 @@ export default function EateryDetailScreen({
                     perMealTarget={perMealTarget}
                     status={nextMealLogStatus[next.meal_period] ?? 'idle'}
                     onLog={(items) => handleLogNextMeal(next.meal_period, items)}
+                    onUndoLog={() => setNextMealLogStatus((s) => ({ ...s, [next.meal_period]: 'idle' }))}
                     onLogItem={(item) => logMeal(eatery.id, next.meal_period, [item])}
                   />
                 </View>

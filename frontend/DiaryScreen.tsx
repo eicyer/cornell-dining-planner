@@ -1,20 +1,23 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { DaySummary, LoggedMeal, Preferences, getLoggedMealsSummary, getLoggedMealsToday, getPreferences, rateMeal } from './api';
-import LoggedMealCard from './components/LoggedMealCard';
-import ProgressBar from './components/ProgressBar';
-import ProgressRing from './components/ProgressRing';
+import {
+  DaySummary,
+  LoggedMeal,
+  MEAL_SECTIONS,
+  Preferences,
+  Totals,
+  getLoggedMeals,
+  getLoggedMealsSummary,
+  getPreferences,
+  rateMeal,
+} from './api';
+import CalorieSummary from './components/CalorieSummary';
+import MealSectionBlock from './components/MealSectionBlock';
 import TopNav from './components/TopNav';
+import WeekStrip from './components/WeekStrip';
+import { longDateLabel, todayString, weekdayLabel } from './dates';
 import { light } from './haptics';
 import { colors, space, type } from './theme';
-
-// "YYYY-MM-DD" parsed as local calendar date, not through `new Date(str)`
-// (which reads a date-only string as UTC midnight and can land on the wrong
-// weekday depending on the viewer's timezone offset).
-function weekdayLabel(dateStr: string): string {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short' });
-}
 
 const WEEK_BAR_MAX_HEIGHT = 56;
 
@@ -63,15 +66,17 @@ export default function DiaryScreen({
   onRetakeFoodSurvey: () => void;
   onRefineMealPreferences: () => void;
 }) {
+  const today = todayString();
+  const [selectedDate, setSelectedDate] = useState(today);
   const [meals, setMeals] = useState<LoggedMeal[] | null>(null);
   const [summary, setSummary] = useState<DaySummary[] | null>(null);
   const [prefs, setPrefs] = useState<Preferences | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  async function load() {
+  async function load(date: string) {
     try {
-      const [m, s, p] = await Promise.all([getLoggedMealsToday(), getLoggedMealsSummary(7), getPreferences()]);
+      const [m, s, p] = await Promise.all([getLoggedMeals(date), getLoggedMealsSummary(7), getPreferences()]);
       setMeals(m);
       setSummary(s);
       setPrefs(p);
@@ -81,12 +86,13 @@ export default function DiaryScreen({
   }
 
   useEffect(() => {
-    load();
-  }, []);
+    setMeals(null);
+    load(selectedDate);
+  }, [selectedDate]);
 
   async function handleRefresh() {
     setRefreshing(true);
-    await load();
+    await load(selectedDate);
     setRefreshing(false);
   }
 
@@ -97,8 +103,9 @@ export default function DiaryScreen({
     setMeals((prev) => (prev ? prev.map((m) => (m.id === meal.id ? updated : m)) : prev));
   }
 
-  // Edits and deletes shift today's totals and the week trend, which the
-  // server computes — refetch the summary rather than re-deriving it here.
+  // Edits and deletes shift the week trend, which the server computes —
+  // refetch it rather than re-deriving it here. The selected day's own
+  // totals are summed from `meals` below, so they update immediately.
   async function refreshSummary() {
     try {
       setSummary(await getLoggedMealsSummary(7));
@@ -125,7 +132,7 @@ export default function DiaryScreen({
     );
   }
 
-  if (!meals || !summary) {
+  if (!summary) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={colors.accent} />
@@ -133,55 +140,66 @@ export default function DiaryScreen({
     );
   }
 
-  const today = summary[summary.length - 1];
+  const dayTotals = sumTotals(meals ?? []);
+  const goal: Totals = prefs
+    ? { calories: prefs.calorie_goal, protein_g: prefs.protein_goal_g, carbs_g: prefs.carb_goal_g, fat_g: prefs.fat_goal_g }
+    : ZERO_TOTALS;
+  // Logging goes through today's live menus only (the add-food flow for
+  // other days is wayfinder #58), so past days are review/edit only.
+  const canLog = selectedDate === today;
 
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
+      // Index 2 is CalorieSummary — it stays pinned while the sections
+      // scroll under it (MyFitnessPal's unpinned summary was its top
+      // redesign complaint).
+      stickyHeaderIndices={[2]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.accent} />}
     >
       <TopNav
         current="diary"
         onGoToToday={onGoToToday}
-        onGoToDiary={() => {}}
+        onGoToDiary={() => setSelectedDate(today)}
         onUpdatePreferences={onUpdatePreferences}
         onRetakeFoodSurvey={onRetakeFoodSurvey}
         onRefineMealPreferences={onRefineMealPreferences}
         onLogout={onLogout}
       />
 
-      <Text style={styles.title}>Diary</Text>
-
-      <View style={styles.progressSection}>
-        <Text style={styles.progressTitle}>Today so far</Text>
-        <View style={styles.ringWrap}>
-          <ProgressRing value={today.totals.calories} goal={today.goal.calories} label="cal" size={148} strokeWidth={10} />
-        </View>
-        <ProgressBar label="Protein" value={today.totals.protein_g} goal={today.goal.protein_g} unit="g" />
-        <ProgressBar label="Carbs" value={today.totals.carbs_g} goal={today.goal.carbs_g} unit="g" />
-        <ProgressBar label="Fat" value={today.totals.fat_g} goal={today.goal.fat_g} unit="g" />
+      <View>
+        <Text style={styles.kicker}>{selectedDate === today ? 'Today' : longDateLabel(selectedDate)}</Text>
+        <Text style={styles.title}>Diary</Text>
+        <WeekStrip selected={selectedDate} today={today} onSelect={setSelectedDate} />
       </View>
 
-      <Text style={styles.sectionTitle}>Logged today</Text>
-      {meals.length === 0 ? (
-        <Text style={styles.empty}>Nothing logged yet today.</Text>
-      ) : (
-        meals.map((meal) => (
-          <LoggedMealCard
-            key={meal.id}
-            meal={meal}
-            onRate={(liked) => handleRate(meal, liked)}
-            onChanged={handleChanged}
-            onDeleted={handleDeleted}
-          />
-        ))
-      )}
+      <CalorieSummary totals={dayTotals} goal={goal} />
 
-      <Text style={styles.sectionTitle}>Last 7 days</Text>
-      <WeekTrend summary={summary} />
+      <View>
+        {!meals ? (
+          <ActivityIndicator style={styles.sectionsLoading} color={colors.accent} />
+        ) : (
+          MEAL_SECTIONS.map((section) => (
+            <MealSectionBlock
+              key={section}
+              section={section}
+              meals={meals.filter((m) => m.meal_section === section)}
+              onLog={canLog ? onGoToToday : undefined}
+              onRate={handleRate}
+              onChanged={handleChanged}
+              onDeleted={handleDeleted}
+            />
+          ))
+        )}
+      </View>
 
-      {prefs && (prefs.liked_tags.length > 0 || prefs.disliked_tags.length > 0) && (
+      <View style={styles.weekSection}>
+        <Text style={styles.sectionTitle}>Last 7 days</Text>
+        <WeekTrend summary={summary} />
+      </View>
+
+      {prefs && (prefs.liked_tags.length > 0 || prefs.disliked_tags.length > 0) ? (
         <View style={styles.tagsSection}>
           {prefs.liked_tags.length > 0 && (
             <>
@@ -208,8 +226,24 @@ export default function DiaryScreen({
             </>
           )}
         </View>
+      ) : (
+        <View />
       )}
     </ScrollView>
+  );
+}
+
+const ZERO_TOTALS: Totals = { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 };
+
+function sumTotals(meals: LoggedMeal[]): Totals {
+  return meals.reduce(
+    (t, m) => ({
+      calories: t.calories + m.totals.calories,
+      protein_g: t.protein_g + m.totals.protein_g,
+      carbs_g: t.carbs_g + m.totals.carbs_g,
+      fat_g: t.fat_g + m.totals.fat_g,
+    }),
+    ZERO_TOTALS
   );
 }
 
@@ -219,15 +253,10 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: space.lg, paddingBottom: 40, maxWidth: 640, width: '100%', alignSelf: 'center' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: colors.paper },
   error: { ...type.body, color: colors.accent, textAlign: 'center' },
-  title: { ...type.display, fontSize: 28, marginBottom: space.xl },
-  progressSection: {
-    marginBottom: space.xxl,
-    paddingBottom: space.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.hairline,
-  },
-  progressTitle: { ...type.kicker, marginBottom: space.md },
-  ringWrap: { alignItems: 'center', marginBottom: space.lg },
+  kicker: { ...type.kicker, marginBottom: space.xs },
+  title: { ...type.display, fontSize: 28, marginBottom: space.lg },
+  sectionsLoading: { marginTop: space.xxl },
+  weekSection: { marginTop: space.xxxl },
   sectionTitle: {
     ...type.kicker,
     marginBottom: space.md,
@@ -236,7 +265,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.hairline,
   },
-  empty: { fontFamily: 'Fraunces_500Medium_Italic', fontSize: 15, color: colors.inkSecondary, marginBottom: space.lg },
   weekBars: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: space.lg },
   weekBarColumn: { alignItems: 'center', flex: 1 },
   weekBarTrack: {

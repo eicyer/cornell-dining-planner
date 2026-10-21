@@ -129,7 +129,7 @@ Added for the mobile interactivity pass: native navigation transitions, a small 
 
 | Token | Values | Usage |
 |---|---|---|
-| `motion` | `fast 150, base 250, slow 400` (ms) | In-page animation only — a `ProgressBar`/`ProgressRing` fill animating to a new value on load. Screen-to-screen transitions are React Navigation native-stack's platform-native push/pop and don't use these. |
+| `motion` | `fast 150, base 250, slow 400` (ms) | In-page animation only — a `ProgressBar` fill animating to a new value on load. Screen-to-screen transitions are React Navigation native-stack's platform-native push/pop and don't use these. |
 | `iconSize` | `sm 16, md 20, lg 24` | Every `Icon` usage. No icon is ever sized ad hoc per screen. |
 | `touchTarget` | `min 44` | Minimum rendered size (or `hitSlop`) for every tappable element, enforced inside the shared `Button`/`Chip`/`Tab` components in `frontend/components/`. |
 | `interaction` | `pressedOpacity 0.6` | The one press-feedback mechanism app-wide, generalizing the border-color swap `FoodSurveyScreen.tsx`'s `optionPressed` already used. |
@@ -148,13 +148,17 @@ A minimal set (`lucide-react-native`, wrapped by `components/Icon.tsx`) is used 
 
 Calorie/Protein/Carb/Fat are, and remain, distinguished by **position and label only** — never by color — exactly as `DiaryScreen.tsx`'s original `ProgressRow` already did. Different nutrition apps use wildly inconsistent macro color conventions (protein is orange in one app, blue in another); rather than invent a fourth convention, this system doesn't color-code macros at all.
 
-**On-track vs. over-target is weight-coded, not hue-coded**: a `ProgressBar`/`ProgressRing` fills `ink` while the value is under goal, and switches to `accent` once at/over goal — reusing the palette section's existing rule that `accent` already doubles as the error/negative-state color, rather than introducing a third hue for "warning." A bar that goes over caps its visual fill at 100% width with a short mono caption (e.g. `+38g over`) so "over" is legible from the number, not just inferred from a color swap.
+**On-track vs. over-target is weight-coded, not hue-coded**: a `ProgressBar`/`BarTrack` fills `ink` while the value is under goal, and switches to `accent` once at/over goal — reusing the palette section's existing rule that `accent` already doubles as the error/negative-state color, rather than introducing a third hue for "warning." A bar that goes over caps its visual fill at 100% width with a short mono caption (e.g. `+38g over`) so "over" is legible from the number, not just inferred from a color swap.
 
-### `ProgressRing`: a narrow, named exception
+### Diary: MyFitnessPal's layout, Editorial surface
 
-`foodDensity.ts`'s rejection of pie/donut/bar-for-portions charts (below) still stands — it does not apply to `ProgressRing`. The rejected charts asked the eye to compare *multiple slices/bars against each other* (portion composition across foods), which is the angle/area-comparison task people are bad at. `ProgressRing` shows exactly **one** value (today's calories vs. goal) as a single fill-percentage — a different, easier perceptual task, the same one a single linear `ProgressBar` already performs, just drawn as a ring for the one headline "how's today going" number on `DiaryScreen.tsx`.
+The Diary (`DiaryScreen.tsx`) follows MyFitnessPal's Today layout for the tracking-first pivot (wayfinder map #49) without borrowing its look:
 
-This is intentionally narrow: **`ProgressRing` is used in exactly one place in the app.** If a future feature wants a ring per macro or a ring per food item, that's multi-series again and belongs back in `foodDensity.ts`'s plain-language territory, not a new ring.
+- **`WeekStrip`**: Sunday-first week of days. The selected day takes the active-`Tab` treatment (2px `accent` underline, no fill), today is set in `monoEmphasis` weight, and future days are inert in `disabled`.
+- **`CalorieSummary`**, pinned with `stickyHeaderIndices` while the sections scroll under it (an unpinned summary was MyFitnessPal's top redesign complaint). It shows `Goal − Food = Remaining` as a mono spec-sheet line, with Remaining as the screen's one large figure (28px `monoEmphasis`), one calorie `BarTrack`, then protein/carbs/fat as three labeled mini-bars. It has an opaque `paper` background and a closing hairline: a surface so content can scroll under it, not a box. Over goal follows the weight-coded rule: Remaining and the bar switch to `accent` and the label reads "Over".
+- **`MealSectionBlock`**: the four fixed Meal Sections (docs/adr/0023), always rendered. The header is a Fraunces section name with a mono section total, closed by a **1px `ink` rule**. That's the one place a rule is ink rather than `hairline`: it marks a section start, the way a menu card rules off a course. Each Logged Meal in it sits under a kicker eatery label, with one row per food: name and a portion caption on the left, mono calories right-aligned. "+ Log lunch" is an `accent` kicker link, shown only for today.
+
+This replaced the old `ProgressRing` (today's calories as a single ring). A ring doesn't survive being pinned at a usable height, and the formula's Remaining figure answers "how's today going" more directly. The component was removed. Any future ring, per macro or per food, is multi-series and falls back under `foodDensity.ts`'s plain-language rule.
 
 ## Verification checklist
 
@@ -166,8 +170,8 @@ This is intentionally narrow: **`ProgressRing` is used in exactly one place in t
 - [ ] Gram inputs, preference toggles, and "Log meal" flows still function end-to-end.
 - [ ] No icon ever sits inside a colored/filled chip or circle background.
 - [ ] No icon uses a color outside `ink` / `accent` / `inkSecondary`.
-- [ ] Every `ProgressBar` / `ProgressRing` renders a real fetched value — no placeholder/demo percentage left in from development.
-- [ ] `ProgressRing` usage count is exactly 1 (today's calories on `DiaryScreen.tsx`). A second usage is a scope violation and needs explicit re-review, not a quiet addition.
+- [ ] Every `ProgressBar` / `BarTrack` renders a real fetched value — no placeholder/demo percentage left in from development.
+- [ ] The Diary's `CalorieSummary` stays pinned while scrolling on web and native, and nothing scrolling under it shows through.
 
 ## Touch-target audit (Phase 6)
 

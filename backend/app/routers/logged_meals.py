@@ -2,11 +2,13 @@ import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user
 from app.db.models import Eatery, LoggedMeal, MenuEvent, MenuItem, NutritionMatch, User, UserPreference
 from app.db.session import get_db
+from app.services.meal_sections import MealSection, meal_section_for
 
 router = APIRouter()
 
@@ -40,6 +42,8 @@ class LoggedMealOut(BaseModel):
     eatery_id: int
     eatery_name: str
     meal_period: str
+    # Derived from meal_period on every read, never stored (docs/adr/0023).
+    meal_section: MealSection
     items: list[LoggedMealItemOut]
     totals: dict[str, float]
     liked: bool | None
@@ -87,10 +91,21 @@ def _to_out(db: Session, meal: LoggedMeal) -> LoggedMealOut:
         eatery_id=eatery_id,
         eatery_name=eatery_name,
         meal_period=meal_period,
+        meal_section=meal_section_for(meal_period),
         items=[LoggedMealItemOut(**i) for i in meal.items],
         totals=meal.totals,
         liked=meal.liked,
     )
+
+
+def _merge_items(existing: list[dict], items_in: list[LoggedMealItemIn]) -> list[LoggedMealItemIn]:
+    """Existing items first in their original order, then new names in the
+    order sent; a name already present has the new grams added to it.
+    Only names and grams carry over — nutrition is recomputed from scratch."""
+    grams_by_name = {i["name"]: i["grams"] for i in existing}
+    for item_in in items_in:
+        grams_by_name[item_in.name] = grams_by_name.get(item_in.name, 0) + item_in.grams
+    return [LoggedMealItemIn(name=name, grams=grams) for name, grams in grams_by_name.items()]
 
 
 def _compute_items(db: Session, menu_event: MenuEvent, items_in: list[LoggedMealItemIn]) -> list[LoggedMealItemOut]:
@@ -137,11 +152,25 @@ def _compute_items(db: Session, menu_event: MenuEvent, items_in: list[LoggedMeal
 
 @router.post("/logged-meals", response_model=LoggedMealOut)
 def log_meal(body: LoggedMealIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    try:
+        return _log_meal(body, user, db)
+    except IntegrityError:
+        # A concurrent first log for the same Menu Event won the unique
+        # (user_id, menu_event_id) race — retry once, which now appends to it.
+        db.rollback()
+        return _log_meal(body, user, db)
+
+
+def _log_meal(body: LoggedMealIn, user: User, db: Session) -> LoggedMealOut:
     """Only items actually on the given eatery/date/meal_period's menu can be
     logged — see docs/adr/0004 (dining-hall food only). Nutrition is always
     recomputed server-side from cached per-100g data, never trusted from the
     client, matching the arithmetic-not-LLM-or-client principle used
-    throughout (docs/adr/0003, 0007)."""
+    throughout (docs/adr/0003, 0007).
+
+    At most one Logged Meal exists per user per Menu Event (docs/adr/0023):
+    logging again from the same Menu Event appends to it, and an item it
+    already holds has its grams grown rather than getting a second line."""
     date = body.date or datetime.date.today()
 
     eatery = db.get(Eatery, body.eatery_id)
@@ -156,17 +185,22 @@ def log_meal(body: LoggedMealIn, user: User = Depends(get_current_user), db: Ses
     if menu_event is None:
         raise HTTPException(status_code=404, detail="No menu found for that eatery/date/meal period")
 
-    computed_items = _compute_items(db, menu_event, body.items)
-
-    meal = LoggedMeal(
-        user_id=user.id,
-        menu_event_id=menu_event.id,
-        date=date,
-        items=[i.model_dump() for i in computed_items],
-        totals=_totals_from_items(computed_items),
-        liked=body.liked,
+    meal = (
+        db.query(LoggedMeal)
+        .filter(LoggedMeal.user_id == user.id, LoggedMeal.menu_event_id == menu_event.id)
+        .with_for_update()
+        .one_or_none()
     )
-    db.add(meal)
+    items_in = body.items if meal is None else _merge_items(meal.items, body.items)
+    computed_items = _compute_items(db, menu_event, items_in)
+
+    if meal is None:
+        meal = LoggedMeal(user_id=user.id, menu_event_id=menu_event.id, date=date, liked=body.liked)
+        db.add(meal)
+    elif "liked" in body.model_fields_set:
+        meal.liked = body.liked
+    meal.items = [i.model_dump() for i in computed_items]
+    meal.totals = _totals_from_items(computed_items)
     db.commit()
     db.refresh(meal)
 
