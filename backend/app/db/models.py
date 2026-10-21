@@ -417,3 +417,20 @@ class WeightEntry(Base):
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=datetime.datetime.utcnow
     )
+
+
+class LoggingEvent(Base):
+    """One logging action, for aggregate success metrics only — see
+    docs/adr/0028. Deliberately content-free: no food names, amounts or
+    nutrition, just who, what kind, which diary day, and when."""
+
+    __tablename__ = "logging_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    # One of app.services.logging_events.EVENT_KINDS.
+    kind: Mapped[str] = mapped_column(String)
+    date: Mapped[datetime.date] = mapped_column(Date)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow
+    )

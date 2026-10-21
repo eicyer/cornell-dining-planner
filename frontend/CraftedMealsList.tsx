@@ -48,7 +48,7 @@ export default function CraftedMealsList({
     if (!eatery.meal_period) return null;
     setLogStatus((s) => ({ ...s, [eatery.id]: 'saving' }));
     try {
-      const logged = await logMeal(eatery.id, eatery.meal_period, items);
+      const logged = await logMeal(eatery.id, eatery.meal_period, items, 'crafted');
       setLogStatus((s) => ({ ...s, [eatery.id]: 'done' }));
       success();
       return logged;
@@ -106,7 +106,7 @@ export default function CraftedMealsList({
                 status={status}
                 onLog={(items) => handleLog(eatery, items)}
                 onUndoLog={() => setLogStatus((s) => ({ ...s, [eatery.id]: 'idle' }))}
-                onLogItem={(item) => logMeal(eatery.id, eatery.meal_period ?? '', [item])}
+                onLogItem={(item) => logMeal(eatery.id, eatery.meal_period ?? '', [item], 'crafted')}
               />
             )}
           </View>

@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.deps import get_current_user
-from app.db.models import ExerciseEntry, User, UserPreference
+from app.db.models import ExerciseEntry, LoggingEvent, User, UserPreference
 from app.db.session import SessionLocal
 from app.main import app
 from app.services.exercise import ACTIVITIES_BY_KEY, estimate_calories
@@ -40,6 +40,7 @@ def users(db):
 
     ids = [u.id for u in created]
     db.query(ExerciseEntry).filter(ExerciseEntry.user_id.in_(ids)).delete()
+    db.query(LoggingEvent).filter(LoggingEvent.user_id.in_(ids)).delete()
     db.query(UserPreference).filter(UserPreference.user_id.in_(ids)).delete()
     db.query(User).filter(User.id.in_(ids)).delete()
     db.commit()

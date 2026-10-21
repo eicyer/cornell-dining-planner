@@ -1,4 +1,5 @@
 import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -8,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_user
 from app.db.models import Eatery, ExerciseEntry, LoggedMeal, MenuEvent, MenuItem, NutritionMatch, QuickAddEntry, User, UserPreference
 from app.db.session import get_db
+from app.services.logging_events import record_event
 from app.services.meal_sections import MealSection, meal_section_for
 
 router = APIRouter()
@@ -24,6 +26,9 @@ class LoggedMealIn(BaseModel):
     date: datetime.date | None = None
     items: list[LoggedMealItemIn]
     liked: bool | None = None
+    # How the items were chosen — only counted for success metrics
+    # (docs/adr/0028), never used for nutrition.
+    source: Literal["menu", "crafted"] = "menu"
 
 
 class LoggedMealItemOut(BaseModel):
@@ -206,6 +211,7 @@ def _log_meal(body: LoggedMealIn, user: User, db: Session) -> LoggedMealOut:
         meal.liked = body.liked
     meal.items = [i.model_dump() for i in computed_items]
     meal.totals = _totals_from_items(computed_items)
+    record_event(db, user.id, body.source, date)
     db.commit()
     db.refresh(meal)
 

@@ -377,16 +377,22 @@ export type LoggedMeal = {
   liked: boolean | null;
 };
 
+// How the items were chosen; only counted for success metrics
+// (docs/adr/0028), never used for nutrition.
+export type LogSource = 'menu' | 'crafted';
+
 export async function logMeal(
   eateryId: number,
   mealPeriod: string,
   items: { name: string; grams: number }[],
-  liked: boolean | null = null
+  source: LogSource = 'menu'
 ): Promise<LoggedMeal> {
   const res = await apiFetch('/logged-meals', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ eatery_id: eateryId, meal_period: mealPeriod, items, liked }),
+    // No `liked` key: logging appends to the Menu Event's existing Logged
+    // Meal (docs/adr/0023), and sending `liked: null` would clear its rating.
+    body: JSON.stringify({ eatery_id: eateryId, meal_period: mealPeriod, items, source }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
