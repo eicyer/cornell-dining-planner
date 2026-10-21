@@ -89,9 +89,13 @@ An admin-set Portion Unit for one item name (`app.db.models.PortionOverride`), e
 _Avoid_: none
 
 **Logged Meal**:
-A record that a user actually ate a specific set of dining-hall Menu Items at a given eatery/Menu Event, created by accepting a Crafted Meal or manually assembling items. The unit daily/weekly totals are computed from. Scoped to dining-hall food only — not a general food diary. At most one per user per Menu Event: logging more from the same Menu Event appends to it, and re-adding an item it already holds grows that item's grams rather than adding a second line — see [[0023-diary-meal-sections]].
+A record that a user actually ate a specific set of dining-hall Menu Items at a given eatery/Menu Event, created by accepting a Crafted Meal or manually assembling items. The unit daily/weekly totals are computed from. Scoped to dining-hall food only — food from anywhere else is a Quick Add Entry. At most one per user per Menu Event: logging more from the same Menu Event appends to it, and re-adding an item it already holds grows that item's grams rather than adding a second line — see [[0023-diary-meal-sections]].
 _Avoid_: Diary entry, food log entry
 
 **Meal Section**:
 One of four fixed buckets every Diary day is split into — Breakfast, Lunch, Dinner, Snacks — always shown, in that order. A Logged Meal's Meal Section is always derived from its Menu Event's meal period (Breakfast → Breakfast; Brunch, Lunch, Late Lunch → Lunch; Dinner → Dinner; Late Night → Snacks), never picked by the user; one section can hold several Logged Meals from different eateries. See [[0023-diary-meal-sections]].
 _Avoid_: Meal period / Menu Event (Cornell's serving windows — several map to one Meal Section), slot
+
+**Quick Add Entry**:
+A user-typed calorie amount (optionally with a name and protein/carbs/fat) for food that isn't on a dining-hall menu, filed under one Meal Section of one Diary day. Its numbers are the user's own and are stored as entered within sanity bounds — the one exception to server-recomputed nutrition, and kept in its own record so Logged Meals stay dining-hall-only. Counts toward the day's totals; never rated, never feeds Soft Preferences. See [[0024-quick-add-entries]].
+_Avoid_: Custom food, manual entry (suggests a reusable food), Logged Meal (that's dining-hall food only)

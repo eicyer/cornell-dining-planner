@@ -37,7 +37,7 @@ python -m app.jobs.enrich_items         # needs ANTHROPIC_API_KEY + USDA_API_KEY
 - `app/services/meal_crafting.py` is a deterministic bounded-least-squares optimizer. The LLM (`meal_polish.py`) only picks among already-generated candidates, names the meal, and writes a rationale — it **never** adjusts calorie/macro numbers. (`docs/adr/0003`)
 - Soft Preferences (liked/disliked tags) only ever *rank* candidates; Hard Constraints (allergens/diet) are the only thing that *excludes* an item. Don't let a Soft Preference become a filter. (`CONTEXT.md`, `docs/adr/0009`)
 - When USDA has a match, use its numbers directly — no LLM re-estimation. The LLM only estimates macros when USDA has nothing, and always still does diet/allergen tagging. (`docs/adr/0001`, `0002`)
-- Logged-meal nutrition is always recomputed server-side from cached per-100g data — never trust client-sent numbers. Items must actually be on that eatery's live menu for that date/meal_period. (`docs/adr/0004`)
+- Logged-meal nutrition is always recomputed server-side from cached per-100g data — never trust client-sent numbers. Items must actually be on that eatery's live menu for that date/meal_period. (`docs/adr/0004`) The one exception is a Quick Add Entry, which stores the user's typed numbers in its own table and is never a Logged Meal. (`docs/adr/0024`)
 - MVP scope is AYCE `"dining room"` eateries only — don't add other `eateryType`s without a new ADR. (`docs/adr/0005`)
 
 ## Repo etiquette
