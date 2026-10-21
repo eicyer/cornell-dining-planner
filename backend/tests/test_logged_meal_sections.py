@@ -190,3 +190,24 @@ def test_appending_keeps_an_existing_rating_unless_a_new_one_is_sent(menu, users
 
     assert unrated_append["liked"] is True
     assert rated_append["liked"] is False
+
+
+def test_recents_return_latest_grams_and_last_hall_per_section(menu, users, as_user):
+    client = as_user(users[0])
+    _log(client, menu, [{"name": PASTA, "grams": 150}])
+    _log(client, menu, [{"name": SALAD, "grams": 80}], meal_period="Late Night")
+
+    recents = client.get("/logged-meals/recents").json()
+    assert {i["name"]: i["grams"] for i in recents["items"]} == {PASTA: 150, SALAD: 80}
+    assert recents["last_eatery_by_section"] == {"lunch": menu, "snacks": menu}
+
+    assert as_user(users[1]).get("/logged-meals/recents").json() == {"items": [], "last_eatery_by_section": {}}
+
+
+def test_menus_expose_each_events_meal_section(menu, client):
+    eatery = next(e for e in client.get("/menus/today").json() if e["id"] == menu)
+    assert {e["meal_period"]: e["meal_section"] for e in eatery["menu_events"]} == {
+        "Lunch": "lunch",
+        "Brunch": "lunch",
+        "Late Night": "snacks",
+    }
