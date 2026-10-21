@@ -343,3 +343,28 @@ class LoggedMeal(Base):
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=datetime.datetime.utcnow
     )
+
+
+class QuickAddEntry(Base):
+    """User-typed calories for food outside the dining halls — see
+    docs/adr/0024. Deliberately not a LoggedMeal: its numbers are stored as
+    entered, so it lives apart from the server-recomputed dining-hall log."""
+
+    __tablename__ = "quick_add_entries"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    date: Mapped[datetime.date] = mapped_column(Date)
+    # One of app.services.meal_sections.MEAL_SECTIONS — chosen by the user,
+    # unlike a Logged Meal's, which is derived from its Menu Event.
+    meal_section: Mapped[str] = mapped_column(String)
+    name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+
+    calories: Mapped[float] = mapped_column(Float)
+    protein_g: Mapped[float] = mapped_column(Float, default=0.0)
+    carbs_g: Mapped[float] = mapped_column(Float, default=0.0)
+    fat_g: Mapped[float] = mapped_column(Float, default=0.0)
+
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow
+    )

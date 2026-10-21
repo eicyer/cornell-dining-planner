@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user
-from app.db.models import Eatery, LoggedMeal, MenuEvent, MenuItem, NutritionMatch, User, UserPreference
+from app.db.models import Eatery, LoggedMeal, MenuEvent, MenuItem, NutritionMatch, QuickAddEntry, User, UserPreference
 from app.db.session import get_db
 from app.services.meal_sections import MealSection, meal_section_for
 
@@ -279,11 +279,23 @@ def logged_meals_summary(days: int = 7, user: User = Depends(get_current_user), 
         .all()
     )
 
+    # Quick Add Entries count toward a day's totals like any food eaten
+    # (docs/adr/0024); they just aren't Logged Meals.
+    quick_adds = (
+        db.query(QuickAddEntry)
+        .filter(QuickAddEntry.user_id == user.id, QuickAddEntry.date >= start_date)
+        .all()
+    )
+
     totals_by_date: dict[datetime.date, dict[str, float]] = {}
     for meal in meals:
         day_totals = totals_by_date.setdefault(meal.date, {"calories": 0.0, "protein_g": 0.0, "carbs_g": 0.0, "fat_g": 0.0})
         for key in day_totals:
             day_totals[key] += meal.totals.get(key, 0.0)
+    for entry in quick_adds:
+        day_totals = totals_by_date.setdefault(entry.date, {"calories": 0.0, "protein_g": 0.0, "carbs_g": 0.0, "fat_g": 0.0})
+        for key in day_totals:
+            day_totals[key] += getattr(entry, key)
 
     out = []
     for i in range(days):
