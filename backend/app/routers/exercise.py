@@ -5,9 +5,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user
-from app.db.models import ExerciseEntry, User, UserPreference
+from app.db.models import ExerciseEntry, User
 from app.db.session import get_db
 from app.services.exercise import ACTIVITIES, ACTIVITIES_BY_KEY, OTHER, estimate_calories
+from app.services.weight import current_weight_kg
 
 router = APIRouter()
 
@@ -70,12 +71,13 @@ def _apply(db: Session, user: User, entry: ExerciseEntry, body: ExerciseIn) -> N
     elif body.activity == OTHER:
         raise HTTPException(status_code=400, detail="Type the calories burned for Other")
     else:
-        prefs = db.query(UserPreference).filter(UserPreference.user_id == user.id).one_or_none()
-        if prefs is None or prefs.weight_kg is None:
+        # Latest Weigh-in, else the profile weight (docs/adr/0026).
+        weight_kg = current_weight_kg(db, user.id)
+        if weight_kg is None:
             raise HTTPException(
-                status_code=400, detail="Add your weight in preferences to estimate this, or type the calories"
+                status_code=400, detail="Log your weight on Progress to estimate this, or type the calories"
             )
-        calories, typed = estimate_calories(body.activity, body.minutes, prefs.weight_kg), False
+        calories, typed = estimate_calories(body.activity, body.minutes, weight_kg), False
 
     entry.activity = body.activity
     entry.label = (
