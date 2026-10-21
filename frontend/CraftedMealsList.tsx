@@ -39,14 +39,16 @@ export default function CraftedMealsList({
   const [logStatus, setLogStatus] = useState<Record<number, LogStatus>>({});
 
   async function handleLog(eatery: EateryCrafted, items: { name: string; grams: number }[]) {
-    if (!eatery.meal_period) return;
-    setLogStatus({ ...logStatus, [eatery.id]: 'saving' });
+    if (!eatery.meal_period) return null;
+    setLogStatus((s) => ({ ...s, [eatery.id]: 'saving' }));
     try {
-      await logMeal(eatery.id, eatery.meal_period, items);
-      setLogStatus({ ...logStatus, [eatery.id]: 'done' });
+      const logged = await logMeal(eatery.id, eatery.meal_period, items);
+      setLogStatus((s) => ({ ...s, [eatery.id]: 'done' }));
       success();
+      return logged;
     } catch {
-      setLogStatus({ ...logStatus, [eatery.id]: 'error' });
+      setLogStatus((s) => ({ ...s, [eatery.id]: 'error' }));
+      return null;
     }
   }
 
@@ -93,6 +95,7 @@ export default function CraftedMealsList({
                 perMealTarget={perMealTarget}
                 status={status}
                 onLog={(items) => handleLog(eatery, items)}
+                onUndoLog={() => setLogStatus((s) => ({ ...s, [eatery.id]: 'idle' }))}
                 onLogItem={(item) => logMeal(eatery.id, eatery.meal_period ?? '', [item])}
               />
             )}
