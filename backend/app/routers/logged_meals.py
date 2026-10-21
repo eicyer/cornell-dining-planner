@@ -270,6 +270,53 @@ def list_logged_meals(
     return [_to_out(db, m) for m in meals]
 
 
+RECENTS_DAYS = 30
+
+
+class RecentItem(BaseModel):
+    name: str
+    # The grams most recently logged for this name — what one tap re-adds.
+    grams: float
+    last_date: datetime.date
+
+
+class RecentsOut(BaseModel):
+    items: list[RecentItem]
+    # Meal Section -> the eatery the user last logged that section from,
+    # for defaulting the add-food flow's hall (docs/adr/0030).
+    last_eatery_by_section: dict[str, int]
+
+
+@router.get("/logged-meals/recents", response_model=RecentsOut)
+def logged_meal_recents(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Names and grams only; the client matches them against today's menu
+    and hides anything that isn't on it (docs/adr/0030)."""
+    since = datetime.date.today() - datetime.timedelta(days=RECENTS_DAYS - 1)
+    meals = (
+        db.query(LoggedMeal)
+        .filter(LoggedMeal.user_id == user.id, LoggedMeal.date >= since)
+        .order_by(LoggedMeal.date.desc(), LoggedMeal.created_at.desc())
+        .all()
+    )
+    events = {
+        e.id: e
+        for e in db.query(MenuEvent).filter(MenuEvent.id.in_([m.menu_event_id for m in meals if m.menu_event_id]))
+    }
+
+    items: dict[str, RecentItem] = {}
+    last_eatery_by_section: dict[str, int] = {}
+    # Newest first, so the first time a name or section is seen wins.
+    for meal in meals:
+        event = events.get(meal.menu_event_id)
+        if event is not None:
+            last_eatery_by_section.setdefault(meal_section_for(event.meal_period), event.eatery_id)
+        for item in meal.items:
+            if item["name"] not in items:
+                items[item["name"]] = RecentItem(name=item["name"], grams=item["grams"], last_date=meal.date)
+
+    return RecentsOut(items=list(items.values()), last_eatery_by_section=last_eatery_by_section)
+
+
 @router.get("/logged-meals/summary", response_model=list[DaySummary])
 def logged_meals_summary(days: int = 7, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     prefs = db.query(UserPreference).filter(UserPreference.user_id == user.id).one_or_none()

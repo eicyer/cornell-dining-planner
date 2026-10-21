@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   ExerciseActivity,
   ExerciseEntry,
   LoggedMeal,
   MEAL_SECTIONS,
+  MealSection,
   Preferences,
   QuickAddEntry,
   Totals,
@@ -24,7 +26,8 @@ import { longDateLabel, todayString } from './dates';
 import { light } from './haptics';
 import { colors, space, type } from './theme';
 
-export default function DiaryScreen({ onLogFromMenus }: { onLogFromMenus: () => void }) {
+// `onLog` opens Add Food for a section (docs/adr/0030).
+export default function DiaryScreen({ onLog }: { onLog: (section: MealSection) => void }) {
   const today = todayString();
   const [selectedDate, setSelectedDate] = useState(today);
   const [meals, setMeals] = useState<LoggedMeal[] | null>(null);
@@ -61,6 +64,20 @@ export default function DiaryScreen({ onLogFromMenus }: { onLogFromMenus: () => 
   useEffect(() => {
     getExerciseActivities().then(setActivities, () => {});
   }, []);
+
+  // Food is added on the pushed Add Food screen, so refetch on return.
+  // Skips the first focus — the selectedDate effect below does that load.
+  // The date is read through a ref so a day switch doesn't re-run this.
+  const focusedOnce = useRef(false);
+  const dateRef = useRef(selectedDate);
+  dateRef.current = selectedDate;
+  useFocusEffect(
+    useCallback(() => {
+      if (focusedOnce.current) load(dateRef.current);
+      focusedOnce.current = true;
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+  );
 
   useEffect(() => {
     setMeals(null);
@@ -170,7 +187,7 @@ export default function DiaryScreen({ onLogFromMenus }: { onLogFromMenus: () => 
               date={selectedDate}
               meals={meals.filter((m) => m.meal_section === section)}
               quickAdds={quickAdds.filter((q) => q.meal_section === section)}
-              onLog={canLog ? onLogFromMenus : undefined}
+              onLog={canLog ? () => onLog(section) : undefined}
               onRate={handleRate}
               onChanged={handleChanged}
               onDeleted={handleDeleted}

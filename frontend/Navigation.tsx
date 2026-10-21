@@ -6,6 +6,7 @@ import ChevronLeft from 'lucide-react-native/icons/chevron-left';
 import {
   EateryCrafted,
   EateryMenu,
+  MealSection,
   Me,
   Preferences,
   Totals,
@@ -26,6 +27,7 @@ import CraftedMealsList from './CraftedMealsList';
 import DiaryScreen from './DiaryScreen';
 import ProgressScreen from './ProgressScreen';
 import EateryDetailScreen from './EateryDetailScreen';
+import AddFoodScreen from './AddFoodScreen';
 import MoreScreen from './MoreScreen';
 import TabBar, { TabName } from './components/TabBar';
 import Button from './components/Button';
@@ -59,6 +61,7 @@ export type RootStackParamList = {
   EateryDetail: { eatery: EateryMenu; perMealTarget: Totals | null };
   StationSurvey: { eatery: EateryMenu };
   MealPreferenceSurvey: undefined;
+  AddFood: { section: MealSection };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -225,8 +228,7 @@ function MenusRouteScreen({ navigation }: NativeStackScreenProps<RootStackParamL
 function DiaryRouteScreen({ navigation }: NativeStackScreenProps<RootStackParamList, 'Diary'>) {
   return (
     <TabScreen tab="Diary" navigation={navigation}>
-      {/* Until the add-food flow (wayfinder #58), a section's "+ Log" opens Menus. */}
-      <DiaryScreen onLogFromMenus={() => switchTab(navigation, 'Menus')} />
+      <DiaryScreen onLog={(section) => navigation.navigate('AddFood', { section })} />
     </TabScreen>
   );
 }
@@ -270,6 +272,10 @@ function MoreRouteScreen({ navigation }: NativeStackScreenProps<RootStackParamLi
       />
     </TabScreen>
   );
+}
+
+function AddFoodRouteScreen({ route, navigation }: NativeStackScreenProps<RootStackParamList, 'AddFood'>) {
+  return <AddFoodScreen section={route.params.section} onDone={() => navigation.goBack()} />;
 }
 
 function EateryDetailRouteScreen({ route, navigation }: NativeStackScreenProps<RootStackParamList, 'EateryDetail'>) {
@@ -388,6 +394,7 @@ export default function RootNavigator() {
         <Stack.Screen name="Progress" component={ProgressRouteScreen} options={tabOptions} />
         <Stack.Screen name="More" component={MoreRouteScreen} options={tabOptions} />
         <Stack.Screen name="EateryDetail" component={EateryDetailRouteScreen} options={pushedHeaderOptions} />
+        <Stack.Screen name="AddFood" component={AddFoodRouteScreen} options={pushedHeaderOptions} />
         <Stack.Screen name="StationSurvey" component={StationSurveyRouteScreen} options={pushedHeaderOptions} />
         <Stack.Screen
           name="MealPreferenceSurvey"
