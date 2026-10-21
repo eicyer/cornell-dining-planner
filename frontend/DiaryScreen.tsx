@@ -5,10 +5,12 @@ import {
   LoggedMeal,
   MEAL_SECTIONS,
   Preferences,
+  QuickAddEntry,
   Totals,
   getLoggedMeals,
   getLoggedMealsSummary,
   getPreferences,
+  getQuickAdds,
   rateMeal,
 } from './api';
 import CalorieSummary from './components/CalorieSummary';
@@ -69,6 +71,7 @@ export default function DiaryScreen({
   const today = todayString();
   const [selectedDate, setSelectedDate] = useState(today);
   const [meals, setMeals] = useState<LoggedMeal[] | null>(null);
+  const [quickAdds, setQuickAdds] = useState<QuickAddEntry[]>([]);
   const [summary, setSummary] = useState<DaySummary[] | null>(null);
   const [prefs, setPrefs] = useState<Preferences | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -76,8 +79,14 @@ export default function DiaryScreen({
 
   async function load(date: string) {
     try {
-      const [m, s, p] = await Promise.all([getLoggedMeals(date), getLoggedMealsSummary(7), getPreferences()]);
+      const [m, q, s, p] = await Promise.all([
+        getLoggedMeals(date),
+        getQuickAdds(date),
+        getLoggedMealsSummary(7),
+        getPreferences(),
+      ]);
       setMeals(m);
+      setQuickAdds(q);
       setSummary(s);
       setPrefs(p);
     } catch (err: any) {
@@ -87,6 +96,7 @@ export default function DiaryScreen({
 
   useEffect(() => {
     setMeals(null);
+    setQuickAdds([]);
     load(selectedDate);
   }, [selectedDate]);
 
@@ -124,6 +134,20 @@ export default function DiaryScreen({
     refreshSummary();
   }
 
+  // Covers both a new entry and an edit (which may have moved it to
+  // another section — sections filter by meal_section, so it just moves).
+  function handleQuickAddSaved(entry: QuickAddEntry) {
+    setQuickAdds((prev) =>
+      prev.some((q) => q.id === entry.id) ? prev.map((q) => (q.id === entry.id ? entry : q)) : [...prev, entry]
+    );
+    refreshSummary();
+  }
+
+  function handleQuickAddDeleted(entryId: number) {
+    setQuickAdds((prev) => prev.filter((q) => q.id !== entryId));
+    refreshSummary();
+  }
+
   if (error) {
     return (
       <View style={styles.center}>
@@ -140,12 +164,12 @@ export default function DiaryScreen({
     );
   }
 
-  const dayTotals = sumTotals(meals ?? []);
+  const dayTotals = sumTotals([...(meals ?? []).map((m) => m.totals), ...quickAdds]);
   const goal: Totals = prefs
     ? { calories: prefs.calorie_goal, protein_g: prefs.protein_goal_g, carbs_g: prefs.carb_goal_g, fat_g: prefs.fat_goal_g }
     : ZERO_TOTALS;
-  // Logging goes through today's live menus only (the add-food flow for
-  // other days is wayfinder #58), so past days are review/edit only.
+  // Menu logging goes through today's live menus only (the add-food flow
+  // for other days is wayfinder #58); Quick Add works on any shown day.
   const canLog = selectedDate === today;
 
   return (
@@ -184,11 +208,15 @@ export default function DiaryScreen({
             <MealSectionBlock
               key={section}
               section={section}
+              date={selectedDate}
               meals={meals.filter((m) => m.meal_section === section)}
+              quickAdds={quickAdds.filter((q) => q.meal_section === section)}
               onLog={canLog ? onGoToToday : undefined}
               onRate={handleRate}
               onChanged={handleChanged}
               onDeleted={handleDeleted}
+              onQuickAddSaved={handleQuickAddSaved}
+              onQuickAddDeleted={handleQuickAddDeleted}
             />
           ))
         )}
@@ -235,13 +263,14 @@ export default function DiaryScreen({
 
 const ZERO_TOTALS: Totals = { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 };
 
-function sumTotals(meals: LoggedMeal[]): Totals {
-  return meals.reduce(
-    (t, m) => ({
-      calories: t.calories + m.totals.calories,
-      protein_g: t.protein_g + m.totals.protein_g,
-      carbs_g: t.carbs_g + m.totals.carbs_g,
-      fat_g: t.fat_g + m.totals.fat_g,
+// Logged Meal totals and Quick Add Entries share the Totals shape.
+function sumTotals(parts: Totals[]): Totals {
+  return parts.reduce(
+    (t, p) => ({
+      calories: t.calories + p.calories,
+      protein_g: t.protein_g + p.protein_g,
+      carbs_g: t.carbs_g + p.carbs_g,
+      fat_g: t.fat_g + p.fat_g,
     }),
     ZERO_TOTALS
   );

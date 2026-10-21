@@ -424,3 +424,57 @@ export async function getLoggedMealsSummary(days = 7): Promise<DaySummary[]> {
   if (!res.ok) throw new Error(`GET /logged-meals/summary failed: ${res.status}`);
   return res.json();
 }
+
+// Food from anywhere other than a dining-hall menu (docs/adr/0024). Unlike
+// a Logged Meal, these numbers are the user's own and stored as entered,
+// and the Meal Section is chosen rather than derived.
+export type QuickAddEntry = {
+  id: number;
+  date: string;
+  meal_section: MealSection;
+  name: string | null;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+};
+
+export type QuickAddInput = {
+  meal_section: MealSection;
+  name: string | null;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+};
+
+export async function getQuickAdds(date: string): Promise<QuickAddEntry[]> {
+  const res = await apiFetch(`/quick-add?date=${date}`);
+  if (!res.ok) throw new Error(`GET /quick-add failed: ${res.status}`);
+  return res.json();
+}
+
+export async function createQuickAdd(date: string, input: QuickAddInput): Promise<QuickAddEntry> {
+  const res = await apiFetch('/quick-add', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ date, ...input }),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `POST /quick-add failed: ${res.status}`));
+  return res.json();
+}
+
+export async function updateQuickAdd(entryId: number, input: QuickAddInput): Promise<QuickAddEntry> {
+  const res = await apiFetch(`/quick-add/${entryId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `PATCH /quick-add/${entryId} failed: ${res.status}`));
+  return res.json();
+}
+
+export async function deleteQuickAdd(entryId: number): Promise<void> {
+  const res = await apiFetch(`/quick-add/${entryId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`DELETE /quick-add/${entryId} failed: ${res.status}`);
+}
