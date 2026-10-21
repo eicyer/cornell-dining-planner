@@ -25,8 +25,12 @@ The mapping from a Menu Item to its calorie/macro density **per 100g** — from 
 _Avoid_: Nutrition lookup, food match, portion (this is a density, not a serving size)
 
 **Crafted Meal**:
-A system-suggested combination of Menu Items from a single eatery/Menu Event, selected to fit a user's calorie/macro/preference targets.
+A system-suggested combination of Menu Items from a single eatery/Menu Event, selected to fit a user's calorie/macro/preference targets. Secondary to the Diary since the tracking pivot: its items are precomputed daily, and once the user has logged anything today its portions are re-sized to the Remaining-Budget Target — see [[0027-crafted-meals-in-a-tracking-first-app]].
 _Avoid_: Suggested meal, recommendation
+
+**Remaining-Budget Target**:
+The per-meal calorie/macro target a Crafted Meal is sized to once anything is logged today: (daily goal + counted exercise − eaten today) ÷ main Meal Sections still empty from now through Dinner, clamped to 50–150% of the flat goal ÷ meals_per_day split. Before the first log of the day, the flat split applies. See [[0027-crafted-meals-in-a-tracking-first-app]].
+_Avoid_: Per-meal target (that's the flat split), remaining calories (that's the Diary's day-level figure)
 
 **Plate Role**:
 One of three roles (`protein`, `carb`, `vegetable`) a Menu Item is classified into for Crafted Meal candidate generation, derived from its own nutrition numbers (protein density, calorie density) and name — not its Menu Item category, which is a dining-hall station grouping and not a reliable stand-in for food role (a "Salad" station can list dressing, tofu, and rice side by side). A Crafted Meal candidate draws at most one item per role, sized off that role's benchmark portion range; items that aren't a real plate component (drinks, desserts, condiments) classify to no role and never enter candidate generation. See [[0012-plate-role-portioning]].
