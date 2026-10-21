@@ -111,14 +111,13 @@ export default function CraftedMealCard({
   // from the previous meal must not silently carry over.
   const [grams, setGrams] = useState<Record<string, number>>({});
   const [itemStatus, setItemStatus] = useState<Record<string, LogStatus>>({});
-  // The Logged Meal individually-logged items landed in, as of the latest
-  // response, and each such item's grams in it — what "Update" compares the
-  // stepper against and what its PATCH rewrites.
+  // Grams of each item *this card* has put in the Diary. The Logged Meal
+  // it lands in is shared with everything else logged from the same Menu
+  // Event (other cards, the menu builder — docs/adr/0023), so every later
+  // change from here is a delta on this card's own share, never an
+  // overwrite of the Diary's figure for that item.
+  const [logged, setLogged] = useState<Record<string, number>>({});
   const [loggedMeal, setLoggedMeal] = useState<LoggedMeal | null>(null);
-  const [loggedGrams, setLoggedGrams] = useState<Record<string, number>>({});
-  // What "Log this meal" / "Log the rest" sent, so undoing it takes back
-  // exactly that — the Logged Meal may also hold items logged elsewhere.
-  const [wholeMealLog, setWholeMealLog] = useState<{ meal: LoggedMeal; sent: { name: string; grams: number }[] } | null>(null);
   // Which "Logged ✓" is showing its remove/keep choice: an item name, the
   // whole meal, or none.
   const [confirming, setConfirming] = useState<{ item: string } | 'meal' | null>(null);
@@ -126,9 +125,8 @@ export default function CraftedMealCard({
   useEffect(() => {
     setGrams(Object.fromEntries(meal.items.map((i) => [i.name, i.grams])));
     setItemStatus({});
+    setLogged({});
     setLoggedMeal(null);
-    setLoggedGrams({});
-    setWholeMealLog(null);
     setConfirming(null);
   }, [meal]);
 
@@ -137,6 +135,10 @@ export default function CraftedMealCard({
     [meal.items, grams]
   );
   const totals = useMemo(() => sumTotals(scaledItems), [scaledItems]);
+  const loggedTotals = useMemo(
+    () => sumTotals(meal.items.filter((i) => i.name in logged).map((i) => scaleItem(i, logged[i.name]))),
+    [meal.items, logged]
+  );
 
   const itemColors = assignPlateColors(meal.items);
   const colorFor = (item: CraftedItem) => itemColors[item.name] ?? colors.neutralFallback;
@@ -145,44 +147,95 @@ export default function CraftedMealCard({
     setGrams((g) => ({ ...g, [name]: Math.max(0, newGrams) }));
   }
 
-  // Items already logged one-by-one are left out of the whole-meal log so
-  // nothing gets counted twice in the diary.
-  const isItemLogged = (name: string) => name in loggedGrams;
+  // Items already logged are left out of "Log the rest" so nothing gets
+  // counted twice in the diary.
+  const isItemLogged = (name: string) => name in logged;
   const remainingItems = scaledItems.filter((i) => i.grams > 0 && !isItemLogged(i.name));
   const someItemsLogged = scaledItems.some((i) => isItemLogged(i.name));
-  const mealDone = status === 'done' || (someItemsLogged && remainingItems.length === 0);
+  const mealDone = someItemsLogged && remainingItems.length === 0;
+
+  function forget(name: string) {
+    setLogged(({ [name]: _, ...rest }) => rest);
+  }
+
+  // Applies per-item gram deltas to the shared Logged Meal. The PATCH
+  // replaces the meal's whole item list, so it's built from a fresh read —
+  // the Diary or another card may have changed the meal since. Deletes the
+  // meal when nothing's left (the API rejects an empty item list). Returns
+  // false if the meal no longer exists (deleted elsewhere).
+  async function applyDeltas(deltas: Record<string, number>): Promise<boolean> {
+    if (!loggedMeal) return false;
+    const fresh = (await getLoggedMeals(loggedMeal.date)).find((m) => m.id === loggedMeal.id);
+    if (!fresh) {
+      setLoggedMeal(null);
+      return false;
+    }
+    const gramsByName: Record<string, number> = Object.fromEntries(fresh.items.map((i) => [i.name, i.grams]));
+    for (const [name, delta] of Object.entries(deltas)) gramsByName[name] = (gramsByName[name] ?? 0) + delta;
+    const items = Object.entries(gramsByName)
+      .map(([name, g]) => ({ name, grams: g }))
+      .filter((i) => i.grams > 0.5);
+    if (items.length === 0) {
+      await deleteMeal(fresh.id);
+      setLoggedMeal(null);
+    } else {
+      setLoggedMeal(await updateMealItems(fresh.id, items));
+    }
+    return true;
+  }
 
   async function handleLog() {
     // A stepper dragged to 0g reads as "leave this off the plate" rather
     // than logging a zero-gram line item.
     const sent = remainingItems.map((i) => ({ name: i.name, grams: i.grams }));
-    const logged = await onLog(sent);
-    if (logged) setWholeMealLog({ meal: logged, sent });
+    const result = await onLog(sent);
+    if (!result) return;
+    setLoggedMeal(result);
+    setLogged((l) => ({ ...l, ...Object.fromEntries(sent.map((i) => [i.name, i.grams])) }));
   }
 
-  // Takes items back out of a Logged Meal: a number subtracts that many
-  // grams, 'all' drops the line. Built from a fresh read for the same
-  // reason as handleUpdateItem; deletes the meal if nothing's left, and is
-  // a no-op if the meal was already deleted elsewhere.
-  async function takeBack(mealToEdit: LoggedMeal, removals: Record<string, number | 'all'>) {
-    const fresh = (await getLoggedMeals(mealToEdit.date)).find((m) => m.id === mealToEdit.id);
-    if (!fresh) return;
-    const items = fresh.items
-      .map((i) => {
-        const removal = removals[i.name];
-        return { name: i.name, grams: removal === 'all' ? 0 : i.grams - (removal ?? 0) };
-      })
-      .filter((i) => i.grams > 0.5);
-    if (items.length === 0) await deleteMeal(fresh.id);
-    else await updateMealItems(fresh.id, items);
+  async function handleLogItem(item: CraftedItem) {
+    setItemStatus((s) => ({ ...s, [item.name]: 'saving' }));
+    try {
+      setLoggedMeal(await onLogItem({ name: item.name, grams: item.grams }));
+      setLogged((l) => ({ ...l, [item.name]: item.grams }));
+      setItemStatus((s) => ({ ...s, [item.name]: 'done' }));
+      success();
+    } catch {
+      setItemStatus((s) => ({ ...s, [item.name]: 'error' }));
+    }
+  }
+
+  // Moves this card's share of a logged item to the stepper's value — a
+  // PATCH, not another log, since logging again would add to the portion
+  // rather than replace it. 0g takes it out.
+  async function handleUpdateItem(item: CraftedItem) {
+    setItemStatus((s) => ({ ...s, [item.name]: 'saving' }));
+    try {
+      const stillThere = await applyDeltas({ [item.name]: item.grams - logged[item.name] });
+      if (!stillThere) {
+        // The meal was deleted elsewhere (e.g. from the Diary), taking
+        // everything this card logged with it — start over from the stepper.
+        setLogged({});
+        if (item.grams > 0) await handleLogItem(item);
+        else setItemStatus((s) => ({ ...s, [item.name]: 'idle' }));
+        return;
+      }
+      if (item.grams > 0) setLogged((l) => ({ ...l, [item.name]: item.grams }));
+      else forget(item.name);
+      setItemStatus((s) => ({ ...s, [item.name]: item.grams > 0 ? 'done' : 'idle' }));
+      success();
+    } catch {
+      setItemStatus((s) => ({ ...s, [item.name]: 'error' }));
+    }
   }
 
   async function handleRemoveItem(name: string) {
-    if (!loggedMeal) return;
     setItemStatus((s) => ({ ...s, [name]: 'saving' }));
     try {
-      await takeBack(loggedMeal, { [name]: 'all' });
-      setLoggedGrams(({ [name]: _, ...rest }) => rest);
+      const stillThere = await applyDeltas({ [name]: -logged[name] });
+      if (stillThere) forget(name);
+      else setLogged({});
       setItemStatus((s) => ({ ...s, [name]: 'idle' }));
       setConfirming(null);
       success();
@@ -191,20 +244,12 @@ export default function CraftedMealCard({
     }
   }
 
-  // Undoes everything this card put in the Diary: the whole-meal log's
-  // grams plus any individually logged items.
+  // Undoes everything this card put in the Diary, and nothing else.
   async function handleRemoveMeal() {
-    const target = wholeMealLog?.meal ?? loggedMeal;
-    if (!target) return;
-    const removals: Record<string, number | 'all'> = {};
-    for (const item of wholeMealLog?.sent ?? []) removals[item.name] = item.grams;
-    for (const name of Object.keys(loggedGrams)) removals[name] = 'all';
     setUndoError(false);
     try {
-      await takeBack(target, removals);
-      setWholeMealLog(null);
-      setLoggedMeal(null);
-      setLoggedGrams({});
+      await applyDeltas(Object.fromEntries(Object.entries(logged).map(([name, g]) => [name, -g])));
+      setLogged({});
       setItemStatus({});
       setConfirming(null);
       onUndoLog();
@@ -214,78 +259,15 @@ export default function CraftedMealCard({
     }
   }
 
-  // Mirrors the diary after a log/update: the stepper shows what's actually
-  // logged for this item, which can exceed what was just sent if the same
-  // item was already in that meal (re-adding grows the portion).
-  function syncLogged(updated: LoggedMeal, name: string) {
-    const logged = updated.items.find((i) => i.name === name);
-    setLoggedMeal(updated);
-    if (logged) {
-      setLoggedGrams((g) => ({ ...g, [name]: logged.grams }));
-      setGrams((g) => ({ ...g, [name]: logged.grams }));
-    }
-  }
-
-  async function handleLogItem(item: CraftedItem) {
-    setItemStatus((s) => ({ ...s, [item.name]: 'saving' }));
-    try {
-      syncLogged(await onLogItem({ name: item.name, grams: item.grams }), item.name);
-      setItemStatus((s) => ({ ...s, [item.name]: 'done' }));
-      success();
-    } catch {
-      setItemStatus((s) => ({ ...s, [item.name]: 'error' }));
-    }
-  }
-
-  // Sets an already-logged item's grams to the stepper's value — a PATCH,
-  // not another log, since logging again would add to the portion rather
-  // than replace it. 0g removes the item; removing a meal's last item
-  // deletes the meal (the API rejects an empty item list).
-  //
-  // The PATCH replaces the meal's whole item list, so it's built from a
-  // fresh read rather than `loggedMeal`: other cards for the same Menu Event
-  // (Eatery Detail shows several) or the Diary may have changed that meal
-  // since, and a stale list would silently drop their items.
-  async function handleUpdateItem(item: CraftedItem) {
-    if (!loggedMeal) return;
-    setItemStatus((s) => ({ ...s, [item.name]: 'saving' }));
-    try {
-      const fresh = (await getLoggedMeals(loggedMeal.date)).find((m) => m.id === loggedMeal.id);
-      if (!fresh) {
-        // Deleted elsewhere (e.g. from the Diary) — nothing to correct, so
-        // log what the stepper shows as a new entry instead.
-        setLoggedGrams(({ [item.name]: _, ...rest }) => rest);
-        setLoggedMeal(null);
-        if (item.grams > 0) await handleLogItem(item);
-        else setItemStatus((s) => ({ ...s, [item.name]: 'idle' }));
-        return;
-      }
-      const items = fresh.items
-        .map((i) => ({ name: i.name, grams: i.name === item.name ? item.grams : i.grams }))
-        .filter((i) => i.grams > 0);
-      if (items.length === 0) {
-        await deleteMeal(loggedMeal.id);
-        setLoggedMeal(null);
-      } else {
-        setLoggedMeal(await updateMealItems(loggedMeal.id, items));
-      }
-      if (item.grams > 0) {
-        setLoggedGrams((g) => ({ ...g, [item.name]: item.grams }));
-        setItemStatus((s) => ({ ...s, [item.name]: 'done' }));
-      } else {
-        setLoggedGrams(({ [item.name]: _, ...rest }) => rest);
-        setItemStatus((s) => ({ ...s, [item.name]: 'idle' }));
-      }
-      success();
-    } catch {
-      setItemStatus((s) => ({ ...s, [item.name]: 'error' }));
-    }
-  }
-
+  // The caller's `status` only reports the whole-meal request in flight or
+  // failed; whether the plate is logged comes from `logged`, which also
+  // tracks per-item logs and removals made after it.
   const logButtonLabel =
-    mealDone ? LOG_BUTTON_LABEL.done
-    : status === 'idle' && someItemsLogged ? 'Log the rest →'
-    : LOG_BUTTON_LABEL[status];
+    status === 'saving' ? LOG_BUTTON_LABEL.saving
+    : mealDone ? LOG_BUTTON_LABEL.done
+    : status === 'error' ? LOG_BUTTON_LABEL.error
+    : someItemsLogged ? 'Log the rest →'
+    : LOG_BUTTON_LABEL.idle;
 
   return (
     <View style={styles.meal}>
@@ -299,27 +281,22 @@ export default function CraftedMealCard({
           {group.items.map((item) => {
             const original = meal.items.find((i) => i.name === item.name);
             const portion = describePortion(item);
-            // Once the whole meal is logged, a per-item log would double-count.
-            // Also locks individually-logged items: "Log the rest" appended
-            // to the same Logged Meal, so per-item edits from here on would
-            // need to know about those items too — the Diary handles that.
-            const wholeMealLogged = status === 'done';
-            const thisItemStatus = wholeMealLogged ? 'done' : itemStatus[item.name] ?? 'idle';
-            const logged = isItemLogged(item.name);
-            const changed = logged && item.grams !== loggedGrams[item.name];
-            const itemAction = logged ? handleUpdateItem : handleLogItem;
+            const thisItemStatus = itemStatus[item.name] ?? 'idle';
+            const saving = thisItemStatus === 'saving' || status === 'saving';
+            const isLogged = isItemLogged(item.name);
+            const changed = isLogged && item.grams !== logged[item.name];
+            const itemAction = isLogged ? handleUpdateItem : handleLogItem;
+            const itemDone = isLogged && !changed && thisItemStatus !== 'error';
             const itemLabel =
-              thisItemStatus === 'saving' ? (logged ? 'Saving…' : LOG_ITEM_LABEL.saving)
+              thisItemStatus === 'saving' ? (isLogged ? 'Saving…' : LOG_ITEM_LABEL.saving)
               : thisItemStatus === 'error' ? LOG_ITEM_LABEL.error
               : changed ? (item.grams > 0 ? 'Update →' : 'Remove')
-              : LOG_ITEM_LABEL[thisItemStatus];
-            const itemDone = wholeMealLogged || (logged && !changed);
-            // A settled "Logged ✓" on an individually logged item stays
-            // tappable — it opens the remove/keep choice for an accidental log.
-            const canRemove = logged && !changed && !wholeMealLogged && thisItemStatus !== 'saving';
-            const itemLogDisabled =
-              !canRemove &&
-              (wholeMealLogged || thisItemStatus === 'saving' || (logged ? !changed && thisItemStatus !== 'error' : item.grams <= 0));
+              : itemDone ? LOG_ITEM_LABEL.done
+              : LOG_ITEM_LABEL.idle;
+            // A settled "Logged ✓" stays tappable — it opens the
+            // remove/keep choice for an accidental log.
+            const canRemove = itemDone && !saving;
+            const itemLogDisabled = saving || (!isLogged && item.grams <= 0);
             const confirmingThis = confirming !== null && confirming !== 'meal' && confirming.item === item.name;
             return (
               <View key={item.name} style={styles.item}>
@@ -333,7 +310,7 @@ export default function CraftedMealCard({
                     originalGrams={original?.grams ?? item.grams}
                     grams={item.grams}
                     onChange={(g) => handleGramsChange(item.name, g)}
-                    disabled={wholeMealLogged || thisItemStatus === 'saving'}
+                    disabled={saving}
                   />
                 </View>
                 <View style={styles.itemFooter}>
@@ -358,7 +335,7 @@ export default function CraftedMealCard({
                       style={({ pressed }) => pressed && styles.pressed}
                     >
                       <Text style={[styles.logItemText, itemLogDisabled && !itemDone && styles.logItemTextDisabled]}>
-                        {itemDone && thisItemStatus !== 'saving' ? LOG_ITEM_LABEL.done : itemLabel}
+                        {itemLabel}
                       </Text>
                     </Pressable>
                   )}
@@ -375,6 +352,13 @@ export default function CraftedMealCard({
           {Math.round(totals.calories)} cal · {Math.round(totals.protein_g)}g protein ·{' '}
           {Math.round(totals.carbs_g)}g carbs · {Math.round(totals.fat_g)}g fat
         </Text>
+        {/* What this card has actually put in the Diary, against the plate
+            as set above — moves with every log, update, remove and undo. */}
+        {someItemsLogged && (
+          <View style={styles.loggedProgress}>
+            <ProgressBar label="Logged" value={loggedTotals.calories} goal={totals.calories} unit=" cal" />
+          </View>
+        )}
       </View>
 
       {confirming === 'meal' ? (
@@ -425,5 +409,6 @@ const styles = StyleSheet.create({
   pressed: { opacity: interaction.pressedOpacity },
   totals: { marginTop: space.sm, paddingTop: space.sm, borderTopWidth: 1, borderTopColor: colors.hairline },
   totalsText: { ...type.monoEmphasis },
+  loggedProgress: { marginTop: space.md },
   logButton: { marginTop: space.md },
 });
