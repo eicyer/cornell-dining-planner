@@ -18,7 +18,7 @@ using approximate values from the Compendium of Physical Activities. Subtracting
 - The preferences form says, under Activity Level: if you log workouts in the Diary, pick the level for your days without them, or turn off "Add exercise to my budget".
 - A per-user preference, `exercise_adds_to_goal` (default on), drops Exercise from the formula when off. Entries are still listed and still show their burn.
 
-**Display:** an Exercise block after Snacks on every Diary day (MyFitnessPal's position), one row per entry, with its own total and an "+ Add exercise" link. The pinned summary shows the formula with Exercise only when the day has any (or always reads "+ 0" would be noise). The 7-day summary returns each day's exercise so the week bars can compare food to goal + exercise.
+**Display:** an Exercise block after Snacks on every Diary day (MyFitnessPal's position), one row per entry, with its own total and an "+ Add exercise" link. The pinned summary adds "+ Exercise" to the formula only on days that have some, so most days don't carry a "+ 0". The 7-day summary returns each day's exercise so the week bars can compare food to goal + exercise.
 
 **Days:** any day up to today, like Quick Add.
 
