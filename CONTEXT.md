@@ -68,6 +68,10 @@ _Avoid_: none
 One logged workout on one Diary day: an activity and minutes, with calories burned estimated server-side as (MET − 1) × weight × hours, or typed by the user when there's no estimate. By default its calories add to that day's budget (Remaining = Goal − Food + Exercise); macro targets never change. See [[0025-exercise-entries-and-net-calories]].
 _Avoid_: Activity (that's Activity Level), workout log
 
+**Weigh-in**:
+One weight a user logged for one day (at most one per day; logging again replaces it), stored in kg. Weigh-ins are history for the Progress screen and the exercise estimate; they never change Recommended Targets on their own — Progress offers to recalculate when the latest weigh-in is ≥1 kg from the weight the targets were computed from. See [[0026-weight-log-and-progress]].
+_Avoid_: Weight (ambiguous with the profile weight on UserPreference), weight goal (there isn't one)
+
 **Health Goal**:
 A user's stated intent for total daily calories — lose weight, maintain weight, or gain weight. Input to Recommended Targets; shifts the calorie target by a fixed, safety-bounded percentage of TDEE and sets the protein-per-kg used in the macro split. Independent of Macro Style and Diet Restriction.
 _Avoid_: Goal (too broad), diet (that's Diet Restriction, a different thing)
