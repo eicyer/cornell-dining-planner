@@ -84,11 +84,9 @@ function LoggedOutScreen() {
 }
 
 function SurveyRouteScreen({ route, navigation }: NativeStackScreenProps<RootStackParamList, 'Survey'>) {
-  function handleSaved(prefs: Preferences) {
-    if (!prefs.food_survey_completed) {
-      navigation.replace('FoodSurvey');
-      return;
-    }
+  // The Food Preference Survey is no longer part of onboarding
+  // (docs/adr/0027) — it stays reachable from the "Taste quiz" link.
+  function handleSaved() {
     navigation.replace('CraftedMeals');
   }
   return (
@@ -109,6 +107,7 @@ function FoodSurveyRouteScreen({ navigation }: NativeStackScreenProps<RootStackP
 function CraftedMealsRouteScreen({ navigation }: NativeStackScreenProps<RootStackParamList, 'CraftedMeals'>) {
   const [eateries, setEateries] = useState<EateryCrafted[] | null>(null);
   const [perMealTarget, setPerMealTarget] = useState<Totals | null>(null);
+  const [tags, setTags] = useState<{ liked: string[]; disliked: string[] }>({ liked: [], disliked: [] });
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -117,6 +116,9 @@ function CraftedMealsRouteScreen({ navigation }: NativeStackScreenProps<RootStac
       const [data, prefs] = await Promise.all([getCraftedMealsToday(), getPreferences()]);
       setEateries(data);
       if (prefs) {
+        setTags({ liked: prefs.liked_tags, disliked: prefs.disliked_tags });
+        // Fallback only — each eatery's response carries the target its meal
+        // was actually sized to (docs/adr/0027).
         const n = Math.max(prefs.meals_per_day, 1);
         setPerMealTarget({
           calories: prefs.calorie_goal / n,
@@ -197,6 +199,8 @@ function CraftedMealsRouteScreen({ navigation }: NativeStackScreenProps<RootStac
     <CraftedMealsList
       eateries={eateries}
       perMealTarget={perMealTarget}
+      likedTags={tags.liked}
+      dislikedTags={tags.disliked}
       refreshing={refreshing}
       onRefresh={handleRefresh}
       onGoToDiary={() => navigation.navigate('Diary')}
@@ -313,10 +317,6 @@ function useBootstrap(): BootState {
         const prefs: Preferences | null = await getPreferences();
         if (!prefs) {
           if (!cancelled) setState({ kind: 'ready', initialRoute: 'Survey', surveyExisting: null });
-          return;
-        }
-        if (!prefs.food_survey_completed) {
-          if (!cancelled) setState({ kind: 'ready', initialRoute: 'FoodSurvey', surveyExisting: null });
           return;
         }
         if (!cancelled) setState({ kind: 'ready', initialRoute: 'CraftedMeals', surveyExisting: null });

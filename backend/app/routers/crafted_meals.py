@@ -149,6 +149,8 @@ class NextMealOut(BaseModel):
     # preview of what's coming, not the primary pick-one interaction.
     crafted_meal: CraftedMealOut | None
     reason_unavailable: str | None = None
+    # What crafted_meal was sized to (docs/adr/0027).
+    target: TargetOut | None = None
 
 
 class EateryCraftedOptionsOut(BaseModel):
@@ -502,6 +504,7 @@ async def crafted_meals_for_eatery(
                 meal_period=next_period,
                 crafted_meal=sizer.resize(period.single, next_target, next_sized),
                 reason_unavailable=period.reason_unavailable,
+                target=_target_out(next_target),
             )
         )
 

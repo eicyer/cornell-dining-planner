@@ -120,6 +120,9 @@ export default function EateryDetailScreen({
   }, [grams, event]);
 
   const itemCount = Object.values(grams).filter((g) => g > 0).length;
+  // The server's target once options load (sized to what's left today —
+  // docs/adr/0027), else the flat split passed in from the Today list.
+  const mealTarget = options?.target ?? perMealTarget;
 
   async function handleLog() {
     if (!event) return;
@@ -178,7 +181,7 @@ export default function EateryDetailScreen({
                 <CraftedMealCard
                   meal={meal}
                   mealPeriod={options.meal_period ?? ''}
-                  perMealTarget={perMealTarget}
+                  perMealTarget={mealTarget}
                   status={optionLogStatus[i] ?? 'idle'}
                   onLog={(items) => handleLogOption(i, items)}
                   onUndoLog={() => setOptionLogStatus((s) => ({ ...s, [i]: 'idle' }))}
@@ -200,7 +203,7 @@ export default function EateryDetailScreen({
                   <CraftedMealCard
                     meal={next.crafted_meal}
                     mealPeriod={next.meal_period}
-                    perMealTarget={perMealTarget}
+                    perMealTarget={next.target ?? perMealTarget}
                     status={nextMealLogStatus[next.meal_period] ?? 'idle'}
                     onLog={(items) => handleLogNextMeal(next.meal_period, items)}
                     onUndoLog={() => setNextMealLogStatus((s) => ({ ...s, [next.meal_period]: 'idle' }))}
@@ -268,8 +271,8 @@ export default function EateryDetailScreen({
       {showFullMenu && (
         <View style={styles.tray}>
           {error && <Text style={styles.error}>{error}</Text>}
-          {perMealTarget && itemCount > 0 && (
-            <ProgressBar label="This meal" value={totals.calories} goal={perMealTarget.calories} unit=" cal" />
+          {mealTarget && itemCount > 0 && (
+            <ProgressBar label="This meal" value={totals.calories} goal={mealTarget.calories} unit=" cal" />
           )}
           <Text style={styles.trayText}>
             {itemCount} item{itemCount === 1 ? '' : 's'} · {Math.round(totals.calories)} cal ·{' '}
