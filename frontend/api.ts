@@ -321,7 +321,8 @@ export type MenuItemOut = {
 };
 
 export type MenuCategory = { category: string; items: MenuItemOut[] };
-export type MenuEventOut = { meal_period: string; categories: MenuCategory[] };
+// meal_section: the Diary Meal Section this period logs into (docs/adr/0023).
+export type MenuEventOut = { meal_period: string; meal_section: MealSection; categories: MenuCategory[] };
 export type EateryMenu = {
   id: number;
   name: string;
@@ -592,5 +593,19 @@ export async function deleteWeighIn(date: string): Promise<void> {
 export async function recalculateTargets(): Promise<Preferences> {
   const res = await apiFetch('/preferences/recalculate-targets', { method: 'POST' });
   if (!res.ok) throw new Error(await errorMessage(res, `POST /preferences/recalculate-targets failed: ${res.status}`));
+  return res.json();
+}
+
+// Items logged in the last 30 days with the grams last used, and the hall
+// each Meal Section was last logged from (docs/adr/0030). The add-food flow
+// shows only the recents that are on today's selected menu.
+export type Recents = {
+  items: { name: string; grams: number; last_date: string }[];
+  last_eatery_by_section: Partial<Record<MealSection, number>>;
+};
+
+export async function getRecents(): Promise<Recents> {
+  const res = await apiFetch('/logged-meals/recents');
+  if (!res.ok) throw new Error(`GET /logged-meals/recents failed: ${res.status}`);
   return res.json();
 }
