@@ -2,11 +2,15 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   DaySummary,
+  ExerciseActivity,
+  ExerciseEntry,
   LoggedMeal,
   MEAL_SECTIONS,
   Preferences,
   QuickAddEntry,
   Totals,
+  getExercise,
+  getExerciseActivities,
   getLoggedMeals,
   getLoggedMealsSummary,
   getPreferences,
@@ -14,6 +18,7 @@ import {
   rateMeal,
 } from './api';
 import CalorieSummary from './components/CalorieSummary';
+import ExerciseBlock from './components/ExerciseBlock';
 import MealSectionBlock from './components/MealSectionBlock';
 import TopNav from './components/TopNav';
 import WeekStrip from './components/WeekStrip';
@@ -28,13 +33,15 @@ const WEEK_BAR_MAX_HEIGHT = 56;
 // reintroduce the angle/area-comparison judgment Design.md's portion-chart
 // rejection is about. The bar supplements the number (shown under each
 // bar), it doesn't replace it.
+// A day's budget includes its exercise when the user counts it (docs/adr/0025).
 function WeekTrend({ summary }: { summary: DaySummary[] }) {
   return (
     <View style={styles.weekBars}>
       {summary.map((day) => {
-        const pct = day.goal.calories > 0 ? day.totals.calories / day.goal.calories : 0;
+        const budget = day.goal.calories + (day.exercise_adds_to_goal ? day.exercise_calories : 0);
+        const pct = budget > 0 ? day.totals.calories / budget : 0;
         const clamped = Math.max(0, Math.min(1, pct));
-        const over = day.goal.calories > 0 && day.totals.calories > day.goal.calories;
+        const over = budget > 0 && day.totals.calories > budget;
         return (
           <View key={day.date} style={styles.weekBarColumn}>
             <View style={styles.weekBarTrack}>
@@ -72,6 +79,8 @@ export default function DiaryScreen({
   const [selectedDate, setSelectedDate] = useState(today);
   const [meals, setMeals] = useState<LoggedMeal[] | null>(null);
   const [quickAdds, setQuickAdds] = useState<QuickAddEntry[]>([]);
+  const [exercise, setExercise] = useState<ExerciseEntry[]>([]);
+  const [activities, setActivities] = useState<ExerciseActivity[]>([]);
   const [summary, setSummary] = useState<DaySummary[] | null>(null);
   const [prefs, setPrefs] = useState<Preferences | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -79,14 +88,16 @@ export default function DiaryScreen({
 
   async function load(date: string) {
     try {
-      const [m, q, s, p] = await Promise.all([
+      const [m, q, e, s, p] = await Promise.all([
         getLoggedMeals(date),
         getQuickAdds(date),
+        getExercise(date),
         getLoggedMealsSummary(7),
         getPreferences(),
       ]);
       setMeals(m);
       setQuickAdds(q);
+      setExercise(e);
       setSummary(s);
       setPrefs(p);
     } catch (err: any) {
@@ -94,8 +105,15 @@ export default function DiaryScreen({
     }
   }
 
+  // The activity list is static per deploy; fetched once, and the Exercise
+  // form just shows "Other" until it arrives.
+  useEffect(() => {
+    getExerciseActivities().then(setActivities, () => {});
+  }, []);
+
   useEffect(() => {
     setMeals(null);
+    setExercise([]);
     setQuickAdds([]);
     load(selectedDate);
   }, [selectedDate]);
@@ -148,6 +166,18 @@ export default function DiaryScreen({
     refreshSummary();
   }
 
+  function handleExerciseSaved(entry: ExerciseEntry) {
+    setExercise((prev) =>
+      prev.some((e) => e.id === entry.id) ? prev.map((e) => (e.id === entry.id ? entry : e)) : [...prev, entry]
+    );
+    refreshSummary();
+  }
+
+  function handleExerciseDeleted(entryId: number) {
+    setExercise((prev) => prev.filter((e) => e.id !== entryId));
+    refreshSummary();
+  }
+
   if (error) {
     return (
       <View style={styles.center}>
@@ -168,6 +198,9 @@ export default function DiaryScreen({
   const goal: Totals = prefs
     ? { calories: prefs.calorie_goal, protein_g: prefs.protein_goal_g, carbs_g: prefs.carb_goal_g, fat_g: prefs.fat_goal_g }
     : ZERO_TOTALS;
+  // Defaults to counting exercise until preferences load (the server default).
+  const exerciseAddsToGoal = prefs?.exercise_adds_to_goal ?? true;
+  const exerciseCalories = exercise.reduce((sum, e) => sum + e.calories, 0);
   // Menu logging goes through today's live menus only (the add-food flow
   // for other days is wayfinder #58); Quick Add works on any shown day.
   const canLog = selectedDate === today;
@@ -198,7 +231,7 @@ export default function DiaryScreen({
         <WeekStrip selected={selectedDate} today={today} onSelect={setSelectedDate} />
       </View>
 
-      <CalorieSummary totals={dayTotals} goal={goal} />
+      <CalorieSummary totals={dayTotals} goal={goal} exercise={exerciseAddsToGoal ? exerciseCalories : 0} />
 
       <View>
         {!meals ? (
@@ -219,6 +252,16 @@ export default function DiaryScreen({
               onQuickAddDeleted={handleQuickAddDeleted}
             />
           ))
+        )}
+        {meals && (
+          <ExerciseBlock
+            date={selectedDate}
+            entries={exercise}
+            activities={activities}
+            addsToGoal={exerciseAddsToGoal}
+            onSaved={handleExerciseSaved}
+            onDeleted={handleExerciseDeleted}
+          />
         )}
       </View>
 

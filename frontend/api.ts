@@ -91,6 +91,8 @@ export type Preferences = {
   disliked_tags: string[];
   eating_styles: string[];
   food_survey_completed: boolean;
+  // docs/adr/0025 — whether Exercise Entries add to the day's budget.
+  exercise_adds_to_goal: boolean;
 };
 
 export async function getPreferences(): Promise<Preferences | null> {
@@ -417,7 +419,15 @@ export async function getLoggedMeals(date?: string): Promise<LoggedMeal[]> {
   return res.json();
 }
 
-export type DaySummary = { date: string; totals: Totals; goal: Totals };
+// `goal` is the base goal; when `exercise_adds_to_goal`, the day's budget
+// is goal + exercise_calories (docs/adr/0025).
+export type DaySummary = {
+  date: string;
+  totals: Totals;
+  goal: Totals;
+  exercise_calories: number;
+  exercise_adds_to_goal: boolean;
+};
 
 export async function getLoggedMealsSummary(days = 7): Promise<DaySummary[]> {
   const res = await apiFetch(`/logged-meals/summary?days=${days}`);
@@ -477,4 +487,61 @@ export async function updateQuickAdd(entryId: number, input: QuickAddInput): Pro
 export async function deleteQuickAdd(entryId: number): Promise<void> {
   const res = await apiFetch(`/quick-add/${entryId}`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`DELETE /quick-add/${entryId} failed: ${res.status}`);
+}
+
+// One logged workout (docs/adr/0025). Calories are estimated server-side
+// from activity × minutes × weight unless `calories_typed`.
+export type ExerciseEntry = {
+  id: number;
+  date: string;
+  activity: string;
+  label: string;
+  minutes: number;
+  calories: number;
+  calories_typed: boolean;
+};
+
+export type ExerciseActivity = { key: string; label: string };
+
+// `activity: 'other'` always needs `calories`; omitted calories otherwise
+// mean "estimate it".
+export type ExerciseInput = { activity: string; minutes: number; calories: number | null; label: string | null };
+
+export const OTHER_ACTIVITY = 'other';
+
+export async function getExerciseActivities(): Promise<ExerciseActivity[]> {
+  const res = await apiFetch('/exercise/activities');
+  if (!res.ok) throw new Error(`GET /exercise/activities failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getExercise(date: string): Promise<ExerciseEntry[]> {
+  const res = await apiFetch(`/exercise?date=${date}`);
+  if (!res.ok) throw new Error(`GET /exercise failed: ${res.status}`);
+  return res.json();
+}
+
+export async function createExercise(date: string, input: ExerciseInput): Promise<ExerciseEntry> {
+  const res = await apiFetch('/exercise', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ date, ...input }),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `POST /exercise failed: ${res.status}`));
+  return res.json();
+}
+
+export async function replaceExercise(entryId: number, input: ExerciseInput): Promise<ExerciseEntry> {
+  const res = await apiFetch(`/exercise/${entryId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `PUT /exercise/${entryId} failed: ${res.status}`));
+  return res.json();
+}
+
+export async function deleteExercise(entryId: number): Promise<void> {
+  const res = await apiFetch(`/exercise/${entryId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`DELETE /exercise/${entryId} failed: ${res.status}`);
 }
