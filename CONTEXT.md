@@ -76,6 +76,14 @@ _Avoid_: Activity (that's Activity Level), workout log
 One weight a user logged for one day (at most one per day; logging again replaces it), stored in kg. Weigh-ins are history for the Progress screen and the exercise estimate; they never change Recommended Targets on their own — Progress offers to recalculate when the latest weigh-in is ≥1 kg from the weight the targets were computed from. See [[0026-weight-log-and-progress]].
 _Avoid_: Weight (ambiguous with the profile weight on UserPreference), weight goal (there isn't one)
 
+**Logging Day**:
+A calendar day on which a user logged any food (a Logged Meal or a Quick Add Entry). The unit of the pivot's north-star metric: logging days per logging user per week. See [[0028-success-metrics-and-first-party-instrumentation]].
+_Avoid_: Active day (opening the app isn't logging), streak day (streaks aren't decided yet)
+
+**Logging Event**:
+A content-free record that a user performed one logging action — kind (menu, crafted, quick_add, exercise, weigh_in), diary date and time — kept only for aggregate success metrics. Never holds food names, amounts or nutrition. See [[0028-success-metrics-and-first-party-instrumentation]].
+_Avoid_: Analytics event (suggests a third-party tool), log entry
+
 **Health Goal**:
 A user's stated intent for total daily calories — lose weight, maintain weight, or gain weight. Input to Recommended Targets; shifts the calorie target by a fixed, safety-bounded percentage of TDEE and sets the protein-per-kg used in the macro split. Independent of Macro Style and Diet Restriction.
 _Avoid_: Goal (too broad), diet (that's Diet Restriction, a different thing)
