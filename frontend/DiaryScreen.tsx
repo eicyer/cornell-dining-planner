@@ -18,27 +18,13 @@ import {
 import CalorieSummary from './components/CalorieSummary';
 import ExerciseBlock from './components/ExerciseBlock';
 import MealSectionBlock from './components/MealSectionBlock';
-import TopNav from './components/TopNav';
+import TopInset from './components/TopInset';
 import WeekStrip from './components/WeekStrip';
 import { longDateLabel, todayString } from './dates';
 import { light } from './haptics';
 import { colors, space, type } from './theme';
 
-export default function DiaryScreen({
-  onGoToToday,
-  onGoToProgress,
-  onLogout,
-  onUpdatePreferences,
-  onRetakeFoodSurvey,
-  onRefineMealPreferences,
-}: {
-  onGoToToday: () => void;
-  onGoToProgress: () => void;
-  onLogout: () => void;
-  onUpdatePreferences: () => void;
-  onRetakeFoodSurvey: () => void;
-  onRefineMealPreferences: () => void;
-}) {
+export default function DiaryScreen({ onLogFromMenus }: { onLogFromMenus: () => void }) {
   const today = todayString();
   const [selectedDate, setSelectedDate] = useState(today);
   const [meals, setMeals] = useState<LoggedMeal[] | null>(null);
@@ -157,22 +143,13 @@ export default function DiaryScreen({
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
-      // Index 2 is CalorieSummary — it stays pinned while the sections
-      // scroll under it (MyFitnessPal's unpinned summary was its top
-      // redesign complaint).
+      // Index 2 is CalorieSummary (after TopInset and the title block) —
+      // it stays pinned while the sections scroll under it (MyFitnessPal's
+      // unpinned summary was its top redesign complaint).
       stickyHeaderIndices={[2]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.accent} />}
     >
-      <TopNav
-        current="diary"
-        onGoToToday={onGoToToday}
-        onGoToDiary={() => setSelectedDate(today)}
-        onGoToProgress={onGoToProgress}
-        onUpdatePreferences={onUpdatePreferences}
-        onRetakeFoodSurvey={onRetakeFoodSurvey}
-        onRefineMealPreferences={onRefineMealPreferences}
-        onLogout={onLogout}
-      />
+      <TopInset />
 
       <View>
         <Text style={styles.kicker}>{selectedDate === today ? 'Today' : longDateLabel(selectedDate)}</Text>
@@ -193,7 +170,7 @@ export default function DiaryScreen({
               date={selectedDate}
               meals={meals.filter((m) => m.meal_section === section)}
               quickAdds={quickAdds.filter((q) => q.meal_section === section)}
-              onLog={canLog ? onGoToToday : undefined}
+              onLog={canLog ? onLogFromMenus : undefined}
               onRate={handleRate}
               onChanged={handleChanged}
               onDeleted={handleDeleted}
@@ -234,7 +211,7 @@ function sumTotals(parts: Totals[]): Totals {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.paper },
-  // No paddingTop: TopNav owns the status-bar/notch clearance for this screen.
+  // No paddingTop: TopInset owns the status-bar/notch clearance for this screen.
   content: { paddingHorizontal: space.lg, paddingBottom: 40, maxWidth: 640, width: '100%', alignSelf: 'center' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: colors.paper },
   error: { ...type.body, color: colors.accent, textAlign: 'center' },

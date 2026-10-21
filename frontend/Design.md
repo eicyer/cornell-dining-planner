@@ -41,7 +41,7 @@ This is genuinely how the app should read: `CraftedMealsList.tsx` renders the ki
 | `inkSecondary` | `#6B6355` | Secondary text — captions, rationale, inactive labels |
 | `inkTertiary` | `#9C9483` | Placeholder text, least-emphasis captions |
 | `hairline` | `#E4DCC8` | The *only* divider mechanism — replaces every border/box |
-| `accent` | `#B31B1B` | Cornell Red. The single saturated color: primary CTAs, active tab/chip underline, current-section rule and hover state in `TopNav`, error text |
+| `accent` | `#B31B1B` | Cornell Red. The single saturated color: primary CTAs, active tab/chip underline, current-tab rule in `TabBar`, error text |
 | `accentInk` | `#FFFFFF` | Text on top of a solid `accent` fill |
 | `disabled` | `#D8CFB8` | Disabled buttons, progress-bar track |
 | `neutralFallback` | `#A8A093` | Warm stand-in for any unmatched food-color lookup |
@@ -84,7 +84,7 @@ Rule: Fraunces is for editorial content (names, rationale, headlines). Archivo i
 | Boxed `gramsInput` / `numberInput` (border + radius) | Underline input (`borderBottomWidth: 1`), mono font for the value |
 | Boxed `textArea` | Underline input, Archivo (prose, not data) |
 | `logButtonDone` (green fill) | `accent`-outline button (no second hue introduced) |
-| Four all-`accent` kicker links jammed into the right half of the title row (`CraftedMealsList`, `DiaryScreen`) | `components/TopNav.tsx` — a masthead bar on its own line above the title: section nav (Today / Diary) left, account links right, one hairline rule closing it |
+| Four all-`accent` kicker links jammed into the right half of the title row (`CraftedMealsList`, `DiaryScreen`) | A masthead bar (`TopNav`), since replaced by the bottom `TabBar` and the More tab — see `docs/adr/0029` |
 
 ### `Disclosure`: sectioning long forms
 
@@ -103,11 +103,11 @@ The targets section computes as you type rather than waiting for a save to revea
 
 Right under the Calories field, a live "Average split for 2,200 cal: 110g protein · 275g carbs · 73g fat" line suggests a population-average macro split (AMDR midpoints, rounded to the commonly-cited 20% protein / 50% carb / 30% fat) the instant a calorie number is entered, with a "Use these →" link that fills the three fields below. This is deliberately separate from the body-stat "Recommend for me" tab's `recommend_targets` call (`backend/app/services/tdee.py`) — that one is personalized (age/sex/weight/activity/goal) and computed server-side; this one only reacts to whatever calorie number is currently typed, needs no round trip, and is there specifically for someone in "Enter my own numbers" mode who knows their calorie target but not how to split it.
 
-### `TopNav` emphasis
+### `TabBar`: four bottom tabs (replaces `TopNav`)
 
-Making every nav link `accent` gave four equally-loud red labels and no sense of place. `TopNav` reuses the underline-tab idiom instead: the **current** section is `ink` with a 2px `accent` bottom rule; every other link is `inkSecondary` and turns `accent` on hover (web) or dims to `interaction.pressedOpacity` on press. `accent` is still the only saturated color, it just marks *where you are* and *what you're touching* rather than painting the whole row. Every link is always present on both screens (the current one included, marked rather than omitted) so the bar doesn't reshuffle between screens.
+The app navigates with four bottom tabs, Diary · Menus · Progress · More (`docs/adr/0029`). The bar is one `hairline` rule above icon-over-kicker tabs. The **current** tab is `ink` with a 2px `accent` rule along its top edge, which is the underline-tab idiom turned over for a bar at the bottom; the others are `inkSecondary`. No filled pill, no badge counts, and `accent` still only marks *where you are*. Each tab is about 50pt tall, so it clears `touchTarget.min` without `hitSlop`. Account links (Preferences, Taste quiz, Meal prefs, Log out) moved from the old masthead into the More tab as plain hairline rows.
 
-`TopNav` also owns its screens' status-bar/notch clearance via `useSafeAreaInsets()` — `CraftedMealsList` and `DiaryScreen` no longer hardcode `paddingTop: 56`, a number that clipped close to the notch on a phone and left the links floating detached from the page on web.
+Status-bar/notch clearance on tab screens comes from `TopInset` (`useSafeAreaInsets()`), the job `TopNav` used to do; pushed screens keep their flat native header.
 
 Rows that were already hairline-only (`weekRow`, `itemRow` in `EateryDetailScreen`, the `eatery` block in `CraftedMealsList`) keep that pattern, just recolored to `colors.hairline`.
 
@@ -184,7 +184,7 @@ Computed from rendered style values (padding + line-height + hitSlop), not measu
 | Diary rate icons (👍/👎 → `ThumbsUp`/`ThumbsDown`) | hitSlop 10: 16 + 20 = 36px (short) | hitSlop 14: 16 + 28 = 44px | hitSlop; `rateButtons` gap bumped to `space.xxl` (32) so the two opposite-meaning targets' hit areas don't overlap (14+14=28 needed) |
 | `EateryDetailScreen` gramsInput | ~26px (short) | `minHeight: touchTarget.min`, width unchanged at 56 | Direct backstop — width stays narrow (numeric entry doesn't need to grow) |
 | `PreferencesForm` `NumberField` input | ~36px (short) | `minHeight: touchTarget.min` | Direct backstop |
-| Kicker nav links (Preferences/Diary/Log out/etc.) | ~16px, zero padding (short) | Now `components/TopNav.tsx`: `paddingVertical: 6` + hitSlop 8 = 16+12+16 = 44px | Padding grows the real box; the 8px horizontal hitSlop stays under half the 16px column gap so adjacent links' tap areas never overlap |
+| Kicker nav links (Preferences/Diary/Log out/etc.) | ~16px, zero padding (short) | Retired with `TopNav` (`docs/adr/0029`); `TabBar` tabs are ~50pt and More-tab rows are `minHeight: 44` | Real box size, no hitSlop needed |
 | `EateryDetailScreen` "Compare today's picks" / `FoodSurveyScreen` "Skip" | ~16px, zero padding (short) | `paddingVertical: space.sm` + hitSlop 6 = 44px | Same pattern, single standalone link so no adjacency concern |
 | Sticky tray "Log Meal" (`EateryDetailScreen`), all `Button` usages | Already ≥44 by construction | — | `Button`'s `minHeight` |
 
