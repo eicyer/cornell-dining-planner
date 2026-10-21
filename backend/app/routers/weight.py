@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_user
 from app.db.models import User, WeightEntry
 from app.db.session import get_db
+from app.services.logging_events import record_event
 
 router = APIRouter()
 
@@ -55,6 +56,7 @@ def put_weigh_in(
             entry = WeightEntry(user_id=user.id, date=date)
             db.add(entry)
         entry.weight_kg = body.weight_kg
+        record_event(db, user.id, "weigh_in", date)
         db.commit()
         return entry
 

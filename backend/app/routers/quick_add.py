@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_user
 from app.db.models import QuickAddEntry, User
 from app.db.session import get_db
+from app.services.logging_events import record_event
 from app.services.meal_sections import MealSection
 
 router = APIRouter()
@@ -97,6 +98,7 @@ def create_quick_add(body: QuickAddIn, user: User = Depends(get_current_user), d
         fat_g=body.fat_g,
     )
     db.add(entry)
+    record_event(db, user.id, "quick_add", date)
     db.commit()
     db.refresh(entry)
     return _to_out(entry)

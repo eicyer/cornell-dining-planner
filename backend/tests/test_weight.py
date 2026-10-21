@@ -13,6 +13,7 @@ from app.db.models import (
     ActivityLevel,
     ExerciseEntry,
     HealthGoal,
+    LoggingEvent,
     Sex,
     TargetMode,
     User,
@@ -49,6 +50,7 @@ def users(db):
 
     ids = [u.id for u in created]
     db.query(WeightEntry).filter(WeightEntry.user_id.in_(ids)).delete()
+    db.query(LoggingEvent).filter(LoggingEvent.user_id.in_(ids)).delete()
     db.query(ExerciseEntry).filter(ExerciseEntry.user_id.in_(ids)).delete()
     db.query(UserPreference).filter(UserPreference.user_id.in_(ids)).delete()
     db.query(User).filter(User.id.in_(ids)).delete()
