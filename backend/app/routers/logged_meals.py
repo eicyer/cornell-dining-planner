@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user
-from app.db.models import Eatery, LoggedMeal, MenuEvent, MenuItem, NutritionMatch, QuickAddEntry, User, UserPreference
+from app.db.models import Eatery, ExerciseEntry, LoggedMeal, MenuEvent, MenuItem, NutritionMatch, QuickAddEntry, User, UserPreference
 from app.db.session import get_db
 from app.services.meal_sections import MealSection, meal_section_for
 
@@ -63,6 +63,11 @@ class DaySummary(BaseModel):
     date: datetime.date
     totals: dict[str, float]
     goal: dict[str, float]
+    # Calories burned by that day's Exercise Entries, reported whether or
+    # not the user counts them toward the goal (docs/adr/0025) —
+    # `exercise_adds_to_goal` decides that, and `goal` stays the base goal.
+    exercise_calories: float = 0.0
+    exercise_adds_to_goal: bool = True
 
 
 def _totals_from_items(items: list[LoggedMealItemOut]) -> dict[str, float]:
@@ -297,8 +302,20 @@ def logged_meals_summary(days: int = 7, user: User = Depends(get_current_user), 
         for key in day_totals:
             day_totals[key] += getattr(entry, key)
 
+    exercise_by_date: dict[datetime.date, float] = {}
+    for entry in db.query(ExerciseEntry).filter(ExerciseEntry.user_id == user.id, ExerciseEntry.date >= start_date):
+        exercise_by_date[entry.date] = exercise_by_date.get(entry.date, 0.0) + entry.calories
+
     out = []
     for i in range(days):
         d = start_date + datetime.timedelta(days=i)
-        out.append(DaySummary(date=d, totals=totals_by_date.get(d, {"calories": 0.0, "protein_g": 0.0, "carbs_g": 0.0, "fat_g": 0.0}), goal=goal))
+        out.append(
+            DaySummary(
+                date=d,
+                totals=totals_by_date.get(d, {"calories": 0.0, "protein_g": 0.0, "carbs_g": 0.0, "fat_g": 0.0}),
+                goal=goal,
+                exercise_calories=exercise_by_date.get(d, 0.0),
+                exercise_adds_to_goal=prefs.exercise_adds_to_goal,
+            )
+        )
     return out

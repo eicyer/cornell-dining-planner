@@ -33,6 +33,6 @@ using approximate values from the Compendium of Physical Activities. Subtracting
 ## Consequences
 
 - New table `exercise_entries` (activity key, label, minutes, calories, whether calories were typed). New preference column `exercise_adds_to_goal`.
-- Endpoints: `GET /exercise/activities`, `POST/GET /exercise`, `PATCH/DELETE /exercise/{id}`. `DaySummary` gains `exercise_calories`.
+- Endpoints: `GET /exercise/activities`, `POST/GET /exercise`, `PUT/DELETE /exercise/{id}` (a full replace, so edits re-estimate). `DaySummary` gains `exercise_calories`.
 - The weight used for the estimate is the preference's `weight_kg`; once the weight log exists (wayfinder #55) it should be the latest logged weight.
 - Crafted Meals sizing to the remaining budget (wayfinder #56) should use the same Remaining figure, exercise included when the switch is on.

@@ -88,6 +88,8 @@ class PreferencesIn(BaseModel):
     # see docs/adr/0009-deterministic-preference-preranking and
     # docs/adr/0015-eating-styles-registry.
     eating_styles: list[str] = []
+    # docs/adr/0025 — whether Exercise Entries add to the day's budget.
+    exercise_adds_to_goal: bool = True
 
     @field_validator("diet_restrictions")
     @classmethod
@@ -136,6 +138,7 @@ class PreferencesOut(BaseModel):
     disliked_tags: list[str]
     eating_styles: list[str]
     food_survey_completed: bool
+    exercise_adds_to_goal: bool
 
 
 class RecommendTargetsIn(BaseModel):
@@ -220,6 +223,7 @@ async def put_preferences(
     prefs.liked_foods_text = body.liked_foods_text
     prefs.disliked_foods_text = body.disliked_foods_text
     prefs.eating_styles = body.eating_styles
+    prefs.exercise_adds_to_goal = body.exercise_adds_to_goal
 
     if text_changed:
         liked_tags, disliked_tags = await parse_preferences(
