@@ -31,6 +31,7 @@ from app.services.meal_preference_survey import CommonFoodItem, build_meal_prefe
 from app.services.preference_parsing import parse_preferences
 from app.services.station_survey import StationItem, build_station_survey
 from app.services.tdee import recommend_targets
+from app.services.weight import latest_weigh_in_kg
 from app.services.llm_enrichment import make_client as make_llm_client
 
 router = APIRouter()
@@ -90,6 +91,8 @@ class PreferencesIn(BaseModel):
     eating_styles: list[str] = []
     # docs/adr/0025 — whether Exercise Entries add to the day's budget.
     exercise_adds_to_goal: bool = True
+    # docs/adr/0026 — display units for weight/height; storage stays metric.
+    unit_system: Literal["imperial", "metric"] = "imperial"
 
     @field_validator("diet_restrictions")
     @classmethod
@@ -139,6 +142,7 @@ class PreferencesOut(BaseModel):
     eating_styles: list[str]
     food_survey_completed: bool
     exercise_adds_to_goal: bool
+    unit_system: str
 
 
 class RecommendTargetsIn(BaseModel):
@@ -224,6 +228,7 @@ async def put_preferences(
     prefs.disliked_foods_text = body.disliked_foods_text
     prefs.eating_styles = body.eating_styles
     prefs.exercise_adds_to_goal = body.exercise_adds_to_goal
+    prefs.unit_system = body.unit_system
 
     if text_changed:
         liked_tags, disliked_tags = await parse_preferences(
@@ -231,6 +236,42 @@ async def put_preferences(
         )
         prefs.liked_tags = liked_tags
         prefs.disliked_tags = disliked_tags
+
+    _invalidate_crafted_meals_cache(db, user.id)
+    db.commit()
+    db.refresh(prefs)
+    return prefs
+
+
+@router.post("/preferences/recalculate-targets", response_model=PreferencesOut)
+def recalculate_targets(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Re-runs Recommended Targets with the latest Weigh-in and saves both
+    the new targets and that weight as the profile weight. Only ever called
+    by the user tapping "Recalculate" on Progress — targets never follow
+    weigh-ins on their own (docs/adr/0026)."""
+    prefs = db.query(UserPreference).filter(UserPreference.user_id == user.id).one_or_none()
+    if prefs is None or prefs.target_mode != TargetMode.recommended:
+        raise HTTPException(status_code=400, detail="Only recommended targets can be recalculated")
+    if None in (prefs.age, prefs.sex, prefs.height_cm, prefs.activity_level, prefs.health_goal):
+        raise HTTPException(status_code=400, detail="Your profile is incomplete; update it in Preferences")
+    weight_kg = latest_weigh_in_kg(db, user.id)
+    if weight_kg is None:
+        raise HTTPException(status_code=400, detail="Log a weigh-in first")
+
+    result = recommend_targets(
+        sex=prefs.sex,
+        weight_kg=weight_kg,
+        height_cm=prefs.height_cm,
+        age=prefs.age,
+        activity_level=prefs.activity_level,
+        health_goal=prefs.health_goal,
+        macro_style=prefs.macro_style or MacroStyle.balanced,
+    )
+    prefs.weight_kg = weight_kg
+    prefs.calorie_goal = result.calorie_goal
+    prefs.protein_goal_g = result.protein_goal_g
+    prefs.carb_goal_g = result.carb_goal_g
+    prefs.fat_goal_g = result.fat_goal_g
 
     _invalidate_crafted_meals_cache(db, user.id)
     db.commit()

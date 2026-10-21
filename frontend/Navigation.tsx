@@ -24,6 +24,7 @@ import PreferencesForm from './PreferencesForm';
 import FoodSurveyScreen from './FoodSurveyScreen';
 import CraftedMealsList from './CraftedMealsList';
 import DiaryScreen from './DiaryScreen';
+import ProgressScreen from './ProgressScreen';
 import EateryDetailScreen from './EateryDetailScreen';
 import Button from './components/Button';
 import Icon from './components/Icon';
@@ -50,6 +51,7 @@ export type RootStackParamList = {
   FoodSurvey: undefined;
   CraftedMeals: undefined;
   Diary: undefined;
+  Progress: undefined;
   EateryDetail: { eatery: EateryMenu; perMealTarget: Totals | null };
   StationSurvey: { eatery: EateryMenu };
   MealPreferenceSurvey: undefined;
@@ -198,6 +200,7 @@ function CraftedMealsRouteScreen({ navigation }: NativeStackScreenProps<RootStac
       refreshing={refreshing}
       onRefresh={handleRefresh}
       onGoToDiary={() => navigation.navigate('Diary')}
+      onGoToProgress={() => navigation.navigate('Progress')}
       onSelectEatery={handleSelectEatery}
       onLogout={handleLogout}
       onUpdatePreferences={handleUpdatePreferences}
@@ -219,6 +222,28 @@ function DiaryRouteScreen({ navigation }: NativeStackScreenProps<RootStackParamL
   return (
     <DiaryScreen
       onGoToToday={() => navigation.navigate('CraftedMeals')}
+      onGoToProgress={() => navigation.navigate('Progress')}
+      onLogout={handleLogout}
+      onUpdatePreferences={handleUpdatePreferences}
+      onRetakeFoodSurvey={() => navigation.navigate('FoodSurvey')}
+      onRefineMealPreferences={() => navigation.navigate('MealPreferenceSurvey')}
+    />
+  );
+}
+
+function ProgressRouteScreen({ navigation }: NativeStackScreenProps<RootStackParamList, 'Progress'>) {
+  async function handleUpdatePreferences() {
+    const prefs = await getPreferences();
+    navigation.navigate('Survey', { existing: prefs });
+  }
+  async function handleLogout() {
+    await logout();
+    navigation.reset({ index: 0, routes: [{ name: 'LoggedOut' }] });
+  }
+  return (
+    <ProgressScreen
+      onGoToToday={() => navigation.navigate('CraftedMeals')}
+      onGoToDiary={() => navigation.navigate('Diary')}
       onLogout={handleLogout}
       onUpdatePreferences={handleUpdatePreferences}
       onRetakeFoodSurvey={() => navigation.navigate('FoodSurvey')}
@@ -343,6 +368,7 @@ export default function RootNavigator() {
         <Stack.Screen name="FoodSurvey" component={FoodSurveyRouteScreen} options={pushedHeaderOptions} />
         <Stack.Screen name="CraftedMeals" component={CraftedMealsRouteScreen} />
         <Stack.Screen name="Diary" component={DiaryRouteScreen} />
+        <Stack.Screen name="Progress" component={ProgressRouteScreen} />
         <Stack.Screen name="EateryDetail" component={EateryDetailRouteScreen} options={pushedHeaderOptions} />
         <Stack.Screen name="StationSurvey" component={StationSurveyRouteScreen} options={pushedHeaderOptions} />
         <Stack.Screen

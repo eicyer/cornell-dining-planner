@@ -19,6 +19,7 @@ export default function CraftedMealsList({
   refreshing,
   onRefresh,
   onGoToDiary,
+  onGoToProgress,
   onSelectEatery,
   onLogout,
   onUpdatePreferences,
@@ -30,6 +31,7 @@ export default function CraftedMealsList({
   refreshing: boolean;
   onRefresh: () => void;
   onGoToDiary: () => void;
+  onGoToProgress: () => void;
   onSelectEatery: (eateryId: number) => void;
   onLogout: () => void;
   onUpdatePreferences: () => void;
@@ -62,6 +64,7 @@ export default function CraftedMealsList({
         current="today"
         onGoToToday={() => {}}
         onGoToDiary={onGoToDiary}
+        onGoToProgress={onGoToProgress}
         onUpdatePreferences={onUpdatePreferences}
         onRetakeFoodSurvey={onRetakeFoodSurvey}
         onRefineMealPreferences={onRefineMealPreferences}
