@@ -45,6 +45,7 @@ const DEFAULTS: Preferences = {
   disliked_tags: [],
   eating_styles: [],
   food_survey_completed: false,
+  exercise_adds_to_goal: true,
 };
 
 const ACTIVITY_LABELS: Record<ActivityLevel, string> = {
@@ -467,6 +468,10 @@ export default function PreferencesForm({
                 />
               ))}
             </View>
+            {/* docs/adr/0025: logged workouts add to the budget on their own. */}
+            <Text style={styles.fieldCaption}>
+              Logging workouts in the Diary? Pick the level for your days without them, so they aren't counted twice.
+            </Text>
 
             <Text style={styles.label}>Health goal</Text>
             <View style={styles.chipRow}>
@@ -592,6 +597,23 @@ export default function PreferencesForm({
           Split across {mealCount} {mealCount === 1 ? 'meal' : 'meals'}: ≈{round(prefs.calorie_goal / mealCount)} cal ·{' '}
           {round(prefs.protein_goal_g / mealCount)}g protein · {round(prefs.carb_goal_g / mealCount)}g carbs ·{' '}
           {round(prefs.fat_goal_g / mealCount)}g fat per meal.
+        </Text>
+
+        <Text style={styles.label}>Logged exercise</Text>
+        <View style={styles.chipRow}>
+          <Chip
+            label="Adds to my budget"
+            selected={prefs.exercise_adds_to_goal}
+            onPress={() => setPrefs({ ...prefs, exercise_adds_to_goal: true })}
+          />
+          <Chip
+            label="Doesn't change my budget"
+            selected={!prefs.exercise_adds_to_goal}
+            onPress={() => setPrefs({ ...prefs, exercise_adds_to_goal: false })}
+          />
+        </View>
+        <Text style={styles.fieldCaption}>
+          Choose "Doesn't change" if your activity level already includes the workouts you log.
         </Text>
 
         <NextLink index={0} />
