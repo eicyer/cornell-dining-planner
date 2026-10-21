@@ -61,8 +61,12 @@ A repeatable, Cornell-wide pairwise "would you rather" comparison (see [[0020-co
 _Avoid_: none
 
 **Activity Level**:
-A user's self-reported exercise frequency (sedentary through very active), used as the multiplier from BMR to TDEE in Recommended Targets. Input to Recommended Targets only.
+A user's self-reported exercise frequency (sedentary through very active), used as the multiplier from BMR to TDEE in Recommended Targets. Input to Recommended Targets only. Users who log Exercise Entries should pick the level for their days without those workouts, or turn off adding exercise to the budget — see [[0025-exercise-entries-and-net-calories]].
 _Avoid_: none
+
+**Exercise Entry**:
+One logged workout on one Diary day: an activity and minutes, with calories burned estimated server-side as (MET − 1) × weight × hours, or typed by the user when there's no estimate. By default its calories add to that day's budget (Remaining = Goal − Food + Exercise); macro targets never change. See [[0025-exercise-entries-and-net-calories]].
+_Avoid_: Activity (that's Activity Level), workout log
 
 **Health Goal**:
 A user's stated intent for total daily calories — lose weight, maintain weight, or gain weight. Input to Recommended Targets; shifts the calorie target by a fixed, safety-bounded percentage of TDEE and sets the protein-per-kg used in the macro split. Independent of Macro Style and Diet Restriction.
