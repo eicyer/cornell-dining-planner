@@ -250,6 +250,10 @@ export type EateryCrafted = {
   meal_period: string | null;
   crafted_meal: CraftedMeal | null;
   reason_unavailable: string | null;
+  // What crafted_meal was sized to: the Remaining-Budget Target once
+  // anything is logged today, else goal ÷ meals_per_day (docs/adr/0027).
+  target: Totals | null;
+  sized_to_remaining: boolean;
 };
 
 export async function getCraftedMealsToday(): Promise<EateryCrafted[]> {
@@ -266,6 +270,7 @@ export type NextMeal = {
   meal_period: string;
   crafted_meal: CraftedMeal | null;
   reason_unavailable: string | null;
+  target: Totals | null;
 };
 
 // Up to a few ranked meal options for one eatery — see the eatery-detail
@@ -282,6 +287,9 @@ export type EateryCraftedOptions = {
   // Later meal periods still being served today at this eatery, in serving
   // order — empty once the current pick is the last period of the day.
   next_meals: NextMeal[];
+  // What crafted_meals were sized to (docs/adr/0027).
+  target: Totals | null;
+  sized_to_remaining: boolean;
 };
 
 export async function getCraftedMealsForEatery(eateryId: number): Promise<EateryCraftedOptions> {
