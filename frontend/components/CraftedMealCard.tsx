@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { CraftedItem, CraftedMeal, PLATE_ROLE_ORDER, PlateRole, Totals } from '../api';
+import { CraftedItem, CraftedMeal, LoggedMeal, PLATE_ROLE_ORDER, PlateRole, Totals, deleteMeal, getLoggedMeals, updateMealItems } from '../api';
 import { assignPlateColors } from '../foodColors';
 import { describePortion } from '../foodDensity';
 import { colors, interaction, space, type } from '../theme';
@@ -92,10 +92,12 @@ export default function CraftedMealCard({
   // per-item PortionStepper below), not necessarily the suggested amounts —
   // the caller logs exactly what's passed here.
   onLog: (items: { name: string; grams: number }[]) => void;
-  // Logs one item on its own (as its own single-item Logged Meal), for
-  // when the user only takes part of the suggested plate. Should reject on
+  // Logs one item on its own, for when the user only takes part of the
+  // suggested plate. Resolves to the Logged Meal it landed in (the backend
+  // appends to the user's meal for that Menu Event — docs/adr/0023) so the
+  // item's portion can still be corrected afterwards. Should reject on
   // failure — per-item status is tracked here, not by the caller.
-  onLogItem: (item: { name: string; grams: number }) => Promise<unknown>;
+  onLogItem: (item: { name: string; grams: number }) => Promise<LoggedMeal>;
 }) {
   // Keyed by item name, seeded from the suggestion. Reset on every `meal`
   // change (not just on mount) — the parent can hand this component a new
@@ -104,9 +106,16 @@ export default function CraftedMealCard({
   // from the previous meal must not silently carry over.
   const [grams, setGrams] = useState<Record<string, number>>({});
   const [itemStatus, setItemStatus] = useState<Record<string, LogStatus>>({});
+  // The Logged Meal individually-logged items landed in, as of the latest
+  // response, and each such item's grams in it — what "Update" compares the
+  // stepper against and what its PATCH rewrites.
+  const [loggedMeal, setLoggedMeal] = useState<LoggedMeal | null>(null);
+  const [loggedGrams, setLoggedGrams] = useState<Record<string, number>>({});
   useEffect(() => {
     setGrams(Object.fromEntries(meal.items.map((i) => [i.name, i.grams])));
     setItemStatus({});
+    setLoggedMeal(null);
+    setLoggedGrams({});
   }, [meal]);
 
   const scaledItems = useMemo(
@@ -124,7 +133,7 @@ export default function CraftedMealCard({
 
   // Items already logged one-by-one are left out of the whole-meal log so
   // nothing gets counted twice in the diary.
-  const isItemLogged = (name: string) => itemStatus[name] === 'done';
+  const isItemLogged = (name: string) => name in loggedGrams;
   const remainingItems = scaledItems.filter((i) => i.grams > 0 && !isItemLogged(i.name));
   const someItemsLogged = scaledItems.some((i) => isItemLogged(i.name));
   const mealDone = status === 'done' || (someItemsLogged && remainingItems.length === 0);
@@ -135,11 +144,68 @@ export default function CraftedMealCard({
     onLog(remainingItems.map((i) => ({ name: i.name, grams: i.grams })));
   }
 
+  // Mirrors the diary after a log/update: the stepper shows what's actually
+  // logged for this item, which can exceed what was just sent if the same
+  // item was already in that meal (re-adding grows the portion).
+  function syncLogged(updated: LoggedMeal, name: string) {
+    const logged = updated.items.find((i) => i.name === name);
+    setLoggedMeal(updated);
+    if (logged) {
+      setLoggedGrams((g) => ({ ...g, [name]: logged.grams }));
+      setGrams((g) => ({ ...g, [name]: logged.grams }));
+    }
+  }
+
   async function handleLogItem(item: CraftedItem) {
     setItemStatus((s) => ({ ...s, [item.name]: 'saving' }));
     try {
-      await onLogItem({ name: item.name, grams: item.grams });
+      syncLogged(await onLogItem({ name: item.name, grams: item.grams }), item.name);
       setItemStatus((s) => ({ ...s, [item.name]: 'done' }));
+      success();
+    } catch {
+      setItemStatus((s) => ({ ...s, [item.name]: 'error' }));
+    }
+  }
+
+  // Sets an already-logged item's grams to the stepper's value — a PATCH,
+  // not another log, since logging again would add to the portion rather
+  // than replace it. 0g removes the item; removing a meal's last item
+  // deletes the meal (the API rejects an empty item list).
+  //
+  // The PATCH replaces the meal's whole item list, so it's built from a
+  // fresh read rather than `loggedMeal`: other cards for the same Menu Event
+  // (Eatery Detail shows several) or the Diary may have changed that meal
+  // since, and a stale list would silently drop their items.
+  async function handleUpdateItem(item: CraftedItem) {
+    if (!loggedMeal) return;
+    setItemStatus((s) => ({ ...s, [item.name]: 'saving' }));
+    try {
+      const fresh = (await getLoggedMeals(loggedMeal.date)).find((m) => m.id === loggedMeal.id);
+      if (!fresh) {
+        // Deleted elsewhere (e.g. from the Diary) — nothing to correct, so
+        // log what the stepper shows as a new entry instead.
+        setLoggedGrams(({ [item.name]: _, ...rest }) => rest);
+        setLoggedMeal(null);
+        if (item.grams > 0) await handleLogItem(item);
+        else setItemStatus((s) => ({ ...s, [item.name]: 'idle' }));
+        return;
+      }
+      const items = fresh.items
+        .map((i) => ({ name: i.name, grams: i.name === item.name ? item.grams : i.grams }))
+        .filter((i) => i.grams > 0);
+      if (items.length === 0) {
+        await deleteMeal(loggedMeal.id);
+        setLoggedMeal(null);
+      } else {
+        setLoggedMeal(await updateMealItems(loggedMeal.id, items));
+      }
+      if (item.grams > 0) {
+        setLoggedGrams((g) => ({ ...g, [item.name]: item.grams }));
+        setItemStatus((s) => ({ ...s, [item.name]: 'done' }));
+      } else {
+        setLoggedGrams(({ [item.name]: _, ...rest }) => rest);
+        setItemStatus((s) => ({ ...s, [item.name]: 'idle' }));
+      }
       success();
     } catch {
       setItemStatus((s) => ({ ...s, [item.name]: 'error' }));
@@ -164,8 +230,22 @@ export default function CraftedMealCard({
             const original = meal.items.find((i) => i.name === item.name);
             const portion = describePortion(item);
             // Once the whole meal is logged, a per-item log would double-count.
-            const thisItemStatus = status === 'done' && !isItemLogged(item.name) ? 'done' : itemStatus[item.name] ?? 'idle';
-            const itemLogDisabled = thisItemStatus === 'saving' || thisItemStatus === 'done' || item.grams <= 0;
+            // Also locks individually-logged items: "Log the rest" appended
+            // to the same Logged Meal, so per-item edits from here on would
+            // need to know about those items too — the Diary handles that.
+            const wholeMealLogged = status === 'done';
+            const thisItemStatus = wholeMealLogged ? 'done' : itemStatus[item.name] ?? 'idle';
+            const logged = isItemLogged(item.name);
+            const changed = logged && item.grams !== loggedGrams[item.name];
+            const itemAction = logged ? handleUpdateItem : handleLogItem;
+            const itemLabel =
+              thisItemStatus === 'saving' ? (logged ? 'Saving…' : LOG_ITEM_LABEL.saving)
+              : thisItemStatus === 'error' ? LOG_ITEM_LABEL.error
+              : changed ? (item.grams > 0 ? 'Update →' : 'Remove')
+              : LOG_ITEM_LABEL[thisItemStatus];
+            const itemLogDisabled =
+              wholeMealLogged || thisItemStatus === 'saving' || (logged ? !changed && thisItemStatus !== 'error' : item.grams <= 0);
+            const itemDone = wholeMealLogged || (logged && !changed);
             return (
               <View key={item.name} style={styles.item}>
                 <View style={styles.itemRow}>
@@ -178,7 +258,7 @@ export default function CraftedMealCard({
                     originalGrams={original?.grams ?? item.grams}
                     grams={item.grams}
                     onChange={(g) => handleGramsChange(item.name, g)}
-                    disabled={thisItemStatus === 'done'}
+                    disabled={wholeMealLogged || thisItemStatus === 'saving'}
                   />
                 </View>
                 <View style={styles.itemFooter}>
@@ -186,13 +266,13 @@ export default function CraftedMealCard({
                     {Math.round(item.grams)}g{portion ? ` · ${portion}` : ''} · {Math.round(item.calories)} cal
                   </Text>
                   <Pressable
-                    onPress={() => handleLogItem(item)}
+                    onPress={() => itemAction(item)}
                     disabled={itemLogDisabled}
                     hitSlop={14}
                     style={({ pressed }) => pressed && styles.pressed}
                   >
-                    <Text style={[styles.logItemText, itemLogDisabled && thisItemStatus !== 'done' && styles.logItemTextDisabled]}>
-                      {LOG_ITEM_LABEL[thisItemStatus]}
+                    <Text style={[styles.logItemText, itemLogDisabled && !itemDone && styles.logItemTextDisabled]}>
+                      {itemDone ? LOG_ITEM_LABEL.done : itemLabel}
                     </Text>
                   </Pressable>
                 </View>
