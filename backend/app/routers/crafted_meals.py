@@ -19,9 +19,11 @@ from app.services.meal_crafting import (
     Target,
     generate_candidates,
     per_meal_target,
+    solve_portions,
 )
 from app.services.meal_polish import polish_meal, polish_meals
 from app.services.preference_scoring import rank_candidates
+from app.services.remaining_budget import EatenToday, eaten_today, remaining_budget_target
 
 router = APIRouter()
 
@@ -120,6 +122,13 @@ class CraftedMealOut(BaseModel):
     totals: dict[str, float]
 
 
+class TargetOut(BaseModel):
+    calories: float
+    protein_g: float
+    carbs_g: float
+    fat_g: float
+
+
 class EateryCraftedOut(BaseModel):
     id: int
     name: str
@@ -127,6 +136,10 @@ class EateryCraftedOut(BaseModel):
     meal_period: str | None
     crafted_meal: CraftedMealOut | None
     reason_unavailable: str | None = None
+    # What crafted_meal was sized to — the Remaining-Budget Target once
+    # anything is logged today, else the flat split (docs/adr/0027).
+    target: TargetOut | None = None
+    sized_to_remaining: bool = False
 
 
 class NextMealOut(BaseModel):
@@ -154,6 +167,9 @@ class EateryCraftedOptionsOut(BaseModel):
     # order — see next_meal_periods. Empty once the current pick is the last
     # period of the day.
     next_meals: list[NextMealOut] = []
+    # What crafted_meals were sized to (docs/adr/0027).
+    target: TargetOut | None = None
+    sized_to_remaining: bool = False
 
 
 # --- Daily precompute -------------------------------------------------
@@ -349,6 +365,64 @@ async def get_or_build_daily_crafted(
     return daily
 
 
+# --- Per-request sizing (docs/adr/0027) --------------------------------
+#
+# The cached day fixes *which* items each Crafted Meal holds (plus its LLM
+# name/rationale). Once the user has logged anything today, those same
+# items are re-portioned here to the Remaining-Budget Target with the
+# optimizer's own solver — deterministic, no LLM, no cache write.
+class _Sizer:
+    def __init__(self, db: Session, user: User, prefs: UserPreference, today: datetime.date):
+        self.db = db
+        self.prefs = prefs
+        self.eaten: EatenToday = eaten_today(db, user.id, today)
+        self._nutrition: dict[str, NutritionMatch] = {}
+
+    def target_for(self, meal_period: str) -> tuple[Target, bool]:
+        return remaining_budget_target(self.prefs, self.eaten, meal_period)
+
+    def resize(self, meal: CraftedMealOut | None, target: Target, sized: bool) -> CraftedMealOut | None:
+        if meal is None or not sized:
+            return meal
+        missing = [i.name for i in meal.items if i.name not in self._nutrition]
+        if missing:
+            for n in self.db.query(NutritionMatch).filter(NutritionMatch.item_name.in_(missing)):
+                self._nutrition[n.item_name] = n
+        items: list[ItemNutrition] = []
+        for item in meal.items:
+            nutrition = self._nutrition.get(item.name)
+            if nutrition is None:
+                return meal
+            items.append(
+                ItemNutrition(
+                    name=item.name,
+                    category=item.category,
+                    calories_per_100g=nutrition.calories_per_100g,
+                    protein_g_per_100g=nutrition.protein_g_per_100g,
+                    carbs_g_per_100g=nutrition.carbs_g_per_100g,
+                    fat_g_per_100g=nutrition.fat_g_per_100g,
+                    fixed_serving_grams=plate_grams_for(item.name),
+                    sugar_g_per_100g=nutrition.sugar_g_per_100g or 0.0,
+                    fiber_g_per_100g=nutrition.fiber_g_per_100g or 0.0,
+                )
+            )
+        solved = solve_portions(items, target)
+        # Keep the precomputed portions if re-solving can't place every item
+        # (the solver may skip a role, e.g. carbs once the carb budget's spent).
+        if solved is None or {i.name for i in solved.items} != {i.name for i in meal.items}:
+            return meal
+        return CraftedMealOut(
+            name=meal.name,
+            rationale=meal.rationale,
+            items=[CraftedItemOut(**vars(i)) for i in solved.items],
+            totals=solved.totals,
+        )
+
+
+def _target_out(target: Target) -> TargetOut:
+    return TargetOut(calories=target.calories, protein_g=target.protein_g, carbs_g=target.carbs_g, fat_g=target.fat_g)
+
+
 @router.get("/menus/today/crafted", response_model=list[EateryCraftedOut])
 @limiter.limit("20/minute")
 async def crafted_meals_today(
@@ -360,6 +434,7 @@ async def crafted_meals_today(
 
     today = ithaca_today()
     daily = await get_or_build_daily_crafted(user, prefs, today, db)
+    sizer = _Sizer(db, user, prefs, today)
 
     out: list[EateryCraftedOut] = []
     for eatery in daily:
@@ -375,10 +450,12 @@ async def crafted_meals_today(
             continue
 
         period = eatery.periods[meal_period]
+        target, sized = sizer.target_for(meal_period)
         out.append(
             EateryCraftedOut(
                 id=eatery.id, name=eatery.name, campus_area=eatery.campus_area, meal_period=meal_period,
-                crafted_meal=period.single, reason_unavailable=period.reason_unavailable,
+                crafted_meal=sizer.resize(period.single, target, sized), reason_unavailable=period.reason_unavailable,
+                target=_target_out(target), sized_to_remaining=sized,
             )
         )
     return out
@@ -399,26 +476,37 @@ async def crafted_meals_for_eatery(
 
     today = ithaca_today()
     daily = await get_or_build_daily_crafted(user, prefs, today, db)
+    sizer = _Sizer(db, user, prefs, today)
     eatery = next((e for e in daily if e.id == eatery_id), None)
     available = list(eatery.periods.keys()) if eatery else []
     meal_period = pick_meal_period(available)
 
+    target_out: TargetOut | None = None
+    sized = False
     if meal_period is None:
         crafted_meals: list[CraftedMealOut] = []
         reason: str | None = closed_reason(available)
     else:
         period = eatery.periods[meal_period]
-        crafted_meals = period.options
+        target, sized = sizer.target_for(meal_period)
+        crafted_meals = [sizer.resize(m, target, sized) for m in period.options]
         reason = period.reason_unavailable
+        target_out = _target_out(target)
 
     next_meals: list[NextMealOut] = []
     for next_period in next_meal_periods(available, meal_period):
         period = eatery.periods[next_period]
+        next_target, next_sized = sizer.target_for(next_period)
         next_meals.append(
-            NextMealOut(meal_period=next_period, crafted_meal=period.single, reason_unavailable=period.reason_unavailable)
+            NextMealOut(
+                meal_period=next_period,
+                crafted_meal=sizer.resize(period.single, next_target, next_sized),
+                reason_unavailable=period.reason_unavailable,
+            )
         )
 
     return EateryCraftedOptionsOut(
         id=eatery_row.id, name=eatery_row.name, campus_area=eatery_row.campus_area, meal_period=meal_period,
         crafted_meals=crafted_meals, reason_unavailable=reason, next_meals=next_meals,
+        target=target_out, sized_to_remaining=sized,
     )

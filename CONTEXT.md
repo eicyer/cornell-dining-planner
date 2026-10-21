@@ -29,7 +29,7 @@ A system-suggested combination of Menu Items from a single eatery/Menu Event, se
 _Avoid_: Suggested meal, recommendation
 
 **Remaining-Budget Target**:
-The per-meal calorie/macro target a Crafted Meal is sized to once anything is logged today: (daily goal + counted exercise − eaten today) ÷ main Meal Sections still empty from now through Dinner, clamped to 50–150% of the flat goal ÷ meals_per_day split. Before the first log of the day, the flat split applies. See [[0027-crafted-meals-in-a-tracking-first-app]].
+The per-meal calorie/macro target a Crafted Meal is sized to once anything is logged today: (daily goal + counted exercise − eaten today in other sections) ÷ (this section + later main Meal Sections still empty), clamped to 50–150% of the flat goal ÷ meals_per_day split. Before the first log of the day, the flat split applies. See [[0027-crafted-meals-in-a-tracking-first-app]].
 _Avoid_: Per-meal target (that's the flat split), remaining calories (that's the Diary's day-level figure)
 
 **Plate Role**:

@@ -6,10 +6,10 @@ The tracking pivot (wayfinder map #49) keeps Crafted Meals but makes them second
 
 **Crafted Meals are sized to what's left of today, once the user has logged anything today** (supersedes ADR 0008's flat split for that case).
 
-- *Eaten today* = Logged Meals + Quick Add Entries (ADR 0024).
+- *Eaten elsewhere* = today's Logged Meals + Quick Add Entries (ADR 0024) in every Meal Section **except the one being suggested for**. Food already logged in that section is part of this meal (say, the chicken you logged from this very card) and doesn't shrink it.
 - *Budget* = daily goal, plus counted exercise (ADR 0025).
-- *Remaining* = Budget − Eaten, per macro.
-- *Meals left* = the main Meal Sections (Breakfast, Lunch, Dinner) from the requested period's section through Dinner that have nothing logged yet, at least 1. Late Night (Snacks) counts as 1.
+- *Remaining* = Budget − Eaten elsewhere, per macro.
+- *Meals left* = the requested section, plus each later main Meal Section (Breakfast, Lunch, Dinner) that has nothing logged yet. Late Night (Snacks) counts as 1.
 - *Target* = Remaining ÷ Meals left, **clamped to 50–150% of the flat per-meal target** (goal ÷ meals_per_day) for every macro. The lower bound keeps the app from suggesting a sliver of a meal when the budget is nearly spent (a wellbeing default, not a nutrition rule). The upper bound stops a missed log from producing a giant plate.
 - Before anything is logged today, the flat ADR 0008 target still applies. An unlogged breakfast is indistinguishable from a skipped one, and a 150% lunch for someone who just didn't log is the wrong default.
 
