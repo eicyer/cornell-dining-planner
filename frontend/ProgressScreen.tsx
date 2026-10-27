@@ -5,17 +5,19 @@ import X from 'lucide-react-native/icons/x';
 import {
   DaySummary,
   Preferences,
+  Streak,
   WeighIn,
   deleteWeighIn,
   getLoggedMealsSummary,
   getPreferences,
+  getStreak,
   getWeighIns,
   putWeighIn,
   recalculateTargets,
 } from './api';
 import Button from './components/Button';
 import Icon from './components/Icon';
-import TopNav from './components/TopNav';
+import TopInset from './components/TopInset';
 import WeekTrend, { dayBudget } from './components/WeekTrend';
 import WeightChart from './components/WeightChart';
 import { addDays, longDateLabel, todayString } from './dates';
@@ -32,31 +34,24 @@ const RECENT_WEIGH_INS_SHOWN = 5;
 // logging consistency. Wellbeing defaults are deliberate — no goal weight,
 // no projection, weight change in neutral ink, and targets only change
 // when the user taps Recalculate.
-export default function ProgressScreen({
-  onGoToToday,
-  onGoToDiary,
-  onLogout,
-  onUpdatePreferences,
-  onRetakeFoodSurvey,
-  onRefineMealPreferences,
-}: {
-  onGoToToday: () => void;
-  onGoToDiary: () => void;
-  onLogout: () => void;
-  onUpdatePreferences: () => void;
-  onRetakeFoodSurvey: () => void;
-  onRefineMealPreferences: () => void;
-}) {
+export default function ProgressScreen() {
   const [summary, setSummary] = useState<DaySummary[] | null>(null);
   const [weighIns, setWeighIns] = useState<WeighIn[]>([]);
   const [prefs, setPrefs] = useState<Preferences | null>(null);
+  const [streak, setStreak] = useState<Streak | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [s, w, p] = await Promise.all([getLoggedMealsSummary(28), getWeighIns(90), getPreferences()]);
+      const [s, w, p, st] = await Promise.all([
+        getLoggedMealsSummary(28),
+        getWeighIns(90),
+        getPreferences(),
+        getStreak(),
+      ]);
       setSummary(s);
+      setStreak(st);
       setWeighIns(w);
       setPrefs(p);
     } catch (err: any) {
@@ -103,16 +98,7 @@ export default function ProgressScreen({
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.accent} />}
     >
-      <TopNav
-        current="progress"
-        onGoToToday={onGoToToday}
-        onGoToDiary={onGoToDiary}
-        onGoToProgress={() => {}}
-        onUpdatePreferences={onUpdatePreferences}
-        onRetakeFoodSurvey={onRetakeFoodSurvey}
-        onRefineMealPreferences={onRefineMealPreferences}
-        onLogout={onLogout}
-      />
+      <TopInset />
 
       <Text style={styles.kicker}>Last four weeks</Text>
       <Text style={styles.title}>Progress</Text>
@@ -142,6 +128,11 @@ export default function ProgressScreen({
         <Text style={styles.figureLine}>
           {loggedDays.length} of {summary.length} days logged
         </Text>
+        {streak && (
+          <Text style={styles.figureCaption}>
+            Current streak: {streak.days} {streak.days === 1 ? 'day' : 'days'}
+          </Text>
+        )}
       </View>
     </ScrollView>
   );
@@ -315,7 +306,7 @@ function byDate(a: WeighIn, b: WeighIn): number {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.paper },
-  // No paddingTop: TopNav owns the status-bar/notch clearance for this screen.
+  // No paddingTop: TopInset owns the status-bar/notch clearance for this screen.
   content: { paddingHorizontal: space.lg, paddingBottom: 40, maxWidth: 640, width: '100%', alignSelf: 'center' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: colors.paper },
   error: { ...type.body, fontSize: 13, color: colors.accent, marginTop: space.sm },
