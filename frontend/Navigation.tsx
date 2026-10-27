@@ -6,6 +6,7 @@ import ChevronLeft from 'lucide-react-native/icons/chevron-left';
 import {
   EateryCrafted,
   EateryMenu,
+  MealSection,
   Me,
   Preferences,
   Totals,
@@ -26,6 +27,8 @@ import CraftedMealsList from './CraftedMealsList';
 import DiaryScreen from './DiaryScreen';
 import ProgressScreen from './ProgressScreen';
 import EateryDetailScreen from './EateryDetailScreen';
+import AddFoodScreen from './AddFoodScreen';
+import SetupScreen from './SetupScreen';
 import MoreScreen from './MoreScreen';
 import TabBar, { TabName } from './components/TabBar';
 import Button from './components/Button';
@@ -49,6 +52,7 @@ function HeaderBackButton() {
 
 export type RootStackParamList = {
   LoggedOut: undefined;
+  Setup: undefined;
   Survey: { existing: Preferences | null };
   FoodSurvey: undefined;
   // The four tabs (docs/adr/0029).
@@ -59,6 +63,7 @@ export type RootStackParamList = {
   EateryDetail: { eatery: EateryMenu; perMealTarget: Totals | null };
   StationSurvey: { eatery: EateryMenu };
   MealPreferenceSurvey: undefined;
+  AddFood: { section: MealSection };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -83,7 +88,11 @@ function LoggedOutScreen() {
   return (
     <View style={styles.center}>
       <Text style={styles.kicker}>Cornell Dining</Text>
-      <Text style={styles.title}>Plan your plate.</Text>
+      {/* docs/adr/0035 */}
+      <Text style={styles.title}>Your dining-hall food diary.</Text>
+      <Text style={styles.pitch}>
+        Log what you eat at Cornell's dining halls in a couple of taps. Every menu item comes with its nutrition.
+      </Text>
       <Button label="Sign in with Google →" onPress={() => Linking.openURL(loginUrl())} fullWidth={false} />
     </View>
   );
@@ -107,16 +116,28 @@ function TabScreen({ tab, navigation, children }: { tab: TabName; navigation: an
 }
 
 function SurveyRouteScreen({ route, navigation }: NativeStackScreenProps<RootStackParamList, 'Survey'>) {
-  // First run has nothing to go back to, so it lands on the Diary (home);
-  // editing from More just returns there. The Food Preference Survey is no
-  // longer part of onboarding (docs/adr/0027).
+  // First run (reached from Setup's "own numbers" link) lands on the Diary
+  // (home); editing from More just returns there. The Food Preference Survey
+  // is no longer part of onboarding (docs/adr/0027).
   function handleSaved() {
-    if (navigation.canGoBack()) navigation.goBack();
+    if (route.params.existing && navigation.canGoBack()) navigation.goBack();
     else switchTab(navigation, 'Diary');
   }
   return (
     <ScrollView style={styles.pushedScroll} contentContainerStyle={styles.pushedContent}>
       <PreferencesForm initial={route.params.existing} onSaved={handleSaved} />
+    </ScrollView>
+  );
+}
+
+// First run for a user with no preferences yet (docs/adr/0031).
+function SetupRouteScreen({ navigation }: NativeStackScreenProps<RootStackParamList, 'Setup'>) {
+  return (
+    <ScrollView style={styles.pushedScroll} contentContainerStyle={styles.pushedContent}>
+      <SetupScreen
+        onDone={() => switchTab(navigation, 'Diary')}
+        onManual={() => navigation.navigate('Survey', { existing: null })}
+      />
     </ScrollView>
   );
 }
@@ -225,8 +246,7 @@ function MenusRouteScreen({ navigation }: NativeStackScreenProps<RootStackParamL
 function DiaryRouteScreen({ navigation }: NativeStackScreenProps<RootStackParamList, 'Diary'>) {
   return (
     <TabScreen tab="Diary" navigation={navigation}>
-      {/* Until the add-food flow (wayfinder #58), a section's "+ Log" opens Menus. */}
-      <DiaryScreen onLogFromMenus={() => switchTab(navigation, 'Menus')} />
+      <DiaryScreen onLog={(section) => navigation.navigate('AddFood', { section })} />
     </TabScreen>
   );
 }
@@ -270,6 +290,10 @@ function MoreRouteScreen({ navigation }: NativeStackScreenProps<RootStackParamLi
       />
     </TabScreen>
   );
+}
+
+function AddFoodRouteScreen({ route, navigation }: NativeStackScreenProps<RootStackParamList, 'AddFood'>) {
+  return <AddFoodScreen section={route.params.section} onDone={() => navigation.goBack()} />;
 }
 
 function EateryDetailRouteScreen({ route, navigation }: NativeStackScreenProps<RootStackParamList, 'EateryDetail'>) {
@@ -316,7 +340,7 @@ function MealPreferenceSurveyRouteScreen({
 type BootState =
   | { kind: 'loading' }
   | { kind: 'error'; message: string }
-  | { kind: 'ready'; initialRoute: 'LoggedOut' | 'Survey' | 'Diary'; surveyExisting: Preferences | null };
+  | { kind: 'ready'; initialRoute: 'LoggedOut' | 'Setup' | 'Diary'; surveyExisting: Preferences | null };
 
 function useBootstrap(): BootState {
   const [state, setState] = useState<BootState>({ kind: 'loading' });
@@ -332,7 +356,7 @@ function useBootstrap(): BootState {
         }
         const prefs: Preferences | null = await getPreferences();
         if (!prefs) {
-          if (!cancelled) setState({ kind: 'ready', initialRoute: 'Survey', surveyExisting: null });
+          if (!cancelled) setState({ kind: 'ready', initialRoute: 'Setup', surveyExisting: null });
           return;
         }
         if (!cancelled) setState({ kind: 'ready', initialRoute: 'Diary', surveyExisting: null });
@@ -375,6 +399,7 @@ export default function RootNavigator() {
         screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.paper } }}
       >
         <Stack.Screen name="LoggedOut" component={LoggedOutScreen} />
+        <Stack.Screen name="Setup" component={SetupRouteScreen} options={pushedHeaderOptions} />
         <Stack.Screen
           name="Survey"
           component={SurveyRouteScreen}
@@ -388,6 +413,7 @@ export default function RootNavigator() {
         <Stack.Screen name="Progress" component={ProgressRouteScreen} options={tabOptions} />
         <Stack.Screen name="More" component={MoreRouteScreen} options={tabOptions} />
         <Stack.Screen name="EateryDetail" component={EateryDetailRouteScreen} options={pushedHeaderOptions} />
+        <Stack.Screen name="AddFood" component={AddFoodRouteScreen} options={pushedHeaderOptions} />
         <Stack.Screen name="StationSurvey" component={StationSurveyRouteScreen} options={pushedHeaderOptions} />
         <Stack.Screen
           name="MealPreferenceSurvey"
@@ -424,7 +450,15 @@ const styles = StyleSheet.create({
   },
   title: {
     ...type.display,
-    marginBottom: 24,
+    marginBottom: space.md,
+    textAlign: 'center',
+  },
+  pitch: {
+    ...type.body,
+    color: colors.inkSecondary,
+    textAlign: 'center',
+    maxWidth: 360,
+    marginBottom: space.xl,
   },
   headerBack: { paddingHorizontal: space.md, paddingVertical: space.sm },
   tabScreen: { flex: 1, backgroundColor: colors.paper },

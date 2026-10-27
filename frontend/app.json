@@ -19,7 +19,8 @@
       "predictiveBackGestureEnabled": true
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "name": "Cornell Dining"
     },
     "plugins": [
       "expo-font",
