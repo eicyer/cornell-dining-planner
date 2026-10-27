@@ -75,7 +75,7 @@ export default function EateryDetailScreen({
     if (!options || !options.meal_period) return null;
     setOptionLogStatus((s) => ({ ...s, [index]: 'saving' }));
     try {
-      const logged = await logMeal(eatery.id, options.meal_period, items);
+      const logged = await logMeal(eatery.id, options.meal_period, items, 'crafted');
       setOptionLogStatus((s) => ({ ...s, [index]: 'done' }));
       success();
       onLogged(logged);
@@ -89,7 +89,7 @@ export default function EateryDetailScreen({
   async function handleLogNextMeal(mealPeriod: string, items: { name: string; grams: number }[]) {
     setNextMealLogStatus((s) => ({ ...s, [mealPeriod]: 'saving' }));
     try {
-      const logged = await logMeal(eatery.id, mealPeriod, items);
+      const logged = await logMeal(eatery.id, mealPeriod, items, 'crafted');
       setNextMealLogStatus((s) => ({ ...s, [mealPeriod]: 'done' }));
       success();
       onLogged(logged);
@@ -187,7 +187,7 @@ export default function EateryDetailScreen({
                   onUndoLog={() => setOptionLogStatus((s) => ({ ...s, [i]: 'idle' }))}
                   // Deliberately no onLogged here: that jumps to the Diary, which
                   // would cut off logging a second item from the same plate.
-                  onLogItem={(item) => logMeal(eatery.id, options.meal_period ?? '', [item])}
+                  onLogItem={(item) => logMeal(eatery.id, options.meal_period ?? '', [item], 'crafted')}
                 />
               </View>
             ))}
@@ -207,7 +207,7 @@ export default function EateryDetailScreen({
                     status={nextMealLogStatus[next.meal_period] ?? 'idle'}
                     onLog={(items) => handleLogNextMeal(next.meal_period, items)}
                     onUndoLog={() => setNextMealLogStatus((s) => ({ ...s, [next.meal_period]: 'idle' }))}
-                    onLogItem={(item) => logMeal(eatery.id, next.meal_period, [item])}
+                    onLogItem={(item) => logMeal(eatery.id, next.meal_period, [item], 'crafted')}
                   />
                 </View>
               ) : (

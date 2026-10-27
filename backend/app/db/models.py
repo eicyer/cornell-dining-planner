@@ -113,6 +113,9 @@ class UserPreference(Base):
     activity_level: Mapped[ActivityLevel | None] = mapped_column(Enum(ActivityLevel), nullable=True)
     health_goal: Mapped[HealthGoal | None] = mapped_column(Enum(HealthGoal), nullable=True)
     macro_style: Mapped[MacroStyle | None] = mapped_column(Enum(MacroStyle), nullable=True)
+    # kg/week, magnitude only (direction comes from health_goal) — see
+    # docs/adr/0031. Null keeps the older fixed-percentage shift.
+    weekly_pace_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Recorded so re-opening the edit form can default back to whichever mode
     # produced the saved targets, instead of always assuming manual entry.
     target_mode: Mapped[TargetMode] = mapped_column(Enum(TargetMode), default=TargetMode.manual)
@@ -414,6 +417,23 @@ class WeightEntry(Base):
     date: Mapped[datetime.date] = mapped_column(Date)
     weight_kg: Mapped[float] = mapped_column(Float)
 
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow
+    )
+
+
+class LoggingEvent(Base):
+    """One logging action, for aggregate success metrics only — see
+    docs/adr/0028. Deliberately content-free: no food names, amounts or
+    nutrition, just who, what kind, which diary day, and when."""
+
+    __tablename__ = "logging_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    # One of app.services.logging_events.EVENT_KINDS.
+    kind: Mapped[str] = mapped_column(String)
+    date: Mapped[datetime.date] = mapped_column(Date)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=datetime.datetime.utcnow
     )

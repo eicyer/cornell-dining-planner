@@ -10,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.deps import get_current_user
-from app.db.models import QuickAddEntry, User, UserPreference
+from app.db.models import LoggingEvent, QuickAddEntry, User, UserPreference
 from app.db.session import SessionLocal
 from app.main import app
 from tests.conftest import ALLOWED_ORIGIN
@@ -40,6 +40,7 @@ def users(db):
 
     ids = [u.id for u in created]
     db.query(QuickAddEntry).filter(QuickAddEntry.user_id.in_(ids)).delete()
+    db.query(LoggingEvent).filter(LoggingEvent.user_id.in_(ids)).delete()
     db.query(UserPreference).filter(UserPreference.user_id.in_(ids)).delete()
     db.query(User).filter(User.id.in_(ids)).delete()
     db.commit()
@@ -134,3 +135,9 @@ def test_summary_counts_quick_add_in_the_days_totals(db, users, as_user):
 
     today = client.get("/logged-meals/summary?days=1").json()[0]
     assert today["totals"] == {"calories": 500, "protein_g": 20, "carbs_g": 0, "fat_g": 5}
+
+
+def test_records_a_content_free_logging_event(db, users, as_user):
+    _add(as_user(users[0]), name="Secret snack", calories=123)
+    events = db.query(LoggingEvent).filter(LoggingEvent.user_id == users[0].id).all()
+    assert [(e.kind, e.date) for e in events] == [("quick_add", datetime.date.today())]
