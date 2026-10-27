@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import {
   ACTIVITY_LEVELS,
   ActivityLevel,
@@ -19,11 +19,12 @@ import {
 } from './api';
 import { cmToFeetInches, feetInchesToCm, kgToLb, lbToKg } from './units';
 import Button from './components/Button';
+import NumberField from './components/NumberField';
 import Chip from './components/Chip';
 import Disclosure from './components/Disclosure';
 import Tab from './components/Tab';
 import { light } from './haptics';
-import { colors, interaction, radius, space, touchTarget, type } from './theme';
+import { colors, interaction, radius, space, type } from './theme';
 
 const DEFAULTS: Preferences = {
   calorie_goal: 2200,
@@ -85,75 +86,6 @@ const SECTIONS = ['Daily targets', 'Diet & allergens', 'Eating style', 'Foods yo
 const round = (n: number) => Math.round(n).toLocaleString('en-US');
 const humanize = (s: string) => s.replace(/_/g, ' ');
 
-
-// A bordered 1px square, matching PortionStepper's existing +/- idiom rather
-// than introducing a second stepper look. 32pt + 10 hitSlop = 52pt tap target.
-function StepButton({ label, onPress, disabled }: { label: string; onPress: () => void; disabled?: boolean }) {
-  function handlePress() {
-    light();
-    onPress();
-  }
-  return (
-    <Pressable
-      onPress={handlePress}
-      disabled={disabled}
-      hitSlop={10}
-      accessibilityRole="button"
-      accessibilityLabel={label === '+' ? 'Increase' : 'Decrease'}
-      style={({ pressed }) => [styles.stepButton, pressed && styles.stepButtonPressed]}
-    >
-      <Text style={[styles.stepButtonText, disabled && styles.stepButtonTextDisabled]}>{label}</Text>
-    </Pressable>
-  );
-}
-
-function NumberField({
-  label,
-  value,
-  onChange,
-  decimal,
-  caption,
-  step,
-  min = 0,
-  max = Number.MAX_SAFE_INTEGER,
-}: {
-  label: string;
-  value: number | null;
-  onChange: (v: number) => void;
-  decimal?: boolean;
-  caption?: string;
-  // Present on the target fields, where nudging by a sensible increment beats
-  // selecting text and retyping a four-digit number on a phone. Omitted on the
-  // body-stat fields, which are typed once and never adjusted by feel.
-  step?: number;
-  min?: number;
-  max?: number;
-}) {
-  const clamp = (n: number) => Math.min(max, Math.max(min, n));
-  return (
-    <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
-      <View style={styles.numberRow}>
-        {step != null && (
-          <StepButton label="–" onPress={() => onChange(clamp((value ?? 0) - step))} disabled={(value ?? 0) <= min} />
-        )}
-        <TextInput
-          style={[styles.numberInput, step != null && styles.numberInputStepped]}
-          keyboardType={decimal ? 'decimal-pad' : 'numeric'}
-          value={value == null ? '' : String(value)}
-          onChangeText={(text) => {
-            const cleaned = decimal ? text.replace(/[^0-9.]/g, '') : text.replace(/[^0-9]/g, '');
-            onChange(Number(cleaned) || 0);
-          }}
-        />
-        {step != null && (
-          <StepButton label="+" onPress={() => onChange(clamp((value ?? 0) + step))} disabled={(value ?? 0) >= max} />
-        )}
-      </View>
-      {caption && <Text style={styles.fieldCaption}>{caption}</Text>}
-    </View>
-  );
-}
 
 export default function PreferencesForm({
   initial,
@@ -717,7 +649,6 @@ const styles = StyleSheet.create({
   subtitle: { ...type.body, color: colors.inkSecondary, marginBottom: space.md },
   progress: { ...type.kicker, color: colors.inkSecondary },
   progressHint: { ...type.caption, marginTop: space.xs, marginBottom: space.lg },
-  field: { marginBottom: space.md },
   label: { ...type.kicker, marginTop: space.sm, marginBottom: space.sm },
   dailyTargetsLabel: { marginTop: space.xl },
   suggestion: { marginTop: -space.xs, marginBottom: space.lg },
@@ -728,35 +659,6 @@ const styles = StyleSheet.create({
   // which already supplies the gap above via its own marginBottom.
   heightCaption: { ...type.caption, marginBottom: space.md },
   helperText: { ...type.body, color: colors.inkSecondary, marginBottom: space.md },
-  numberRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-  numberInput: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.ink,
-    borderRadius: radius.none,
-    paddingVertical: space.sm,
-    // Direct backstop for the 44pt touch-target minimum — see Phase 6 audit
-    // (same reasoning as EateryDetailScreen's gramsInput).
-    minHeight: touchTarget.min,
-    fontFamily: 'IBMPlexMono_400Regular',
-    fontSize: 17,
-    color: colors.ink,
-    width: 120,
-  },
-  // Narrower once flanked by +/- buttons, so the whole control still fits a
-  // narrow phone without the row wrapping.
-  numberInputStepped: { width: 84, textAlign: 'center' },
-  stepButton: {
-    width: 32,
-    height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.ink,
-    ...Platform.select({ web: { cursor: 'pointer' as const }, default: {} }),
-  },
-  stepButtonPressed: { opacity: interaction.pressedOpacity },
-  stepButtonText: { fontFamily: 'IBMPlexMono_500Medium', fontSize: 18, lineHeight: 20, color: colors.ink },
-  stepButtonTextDisabled: { color: colors.inkTertiary },
   textArea: {
     borderBottomWidth: 1,
     borderBottomColor: colors.hairline,
