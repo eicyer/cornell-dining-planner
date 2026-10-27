@@ -1,4 +1,5 @@
 import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -6,9 +7,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user
-from app.db.models import Eatery, LoggedMeal, MenuEvent, MenuItem, NutritionMatch, User, UserPreference
+from app.db.models import Eatery, ExerciseEntry, LoggedMeal, MenuEvent, MenuItem, NutritionMatch, QuickAddEntry, User, UserPreference
 from app.db.session import get_db
+from app.services.logging_events import record_event
 from app.services.meal_sections import MealSection, meal_section_for
+from app.services.streaks import current_streak
 
 router = APIRouter()
 
@@ -24,6 +27,9 @@ class LoggedMealIn(BaseModel):
     date: datetime.date | None = None
     items: list[LoggedMealItemIn]
     liked: bool | None = None
+    # How the items were chosen — only counted for success metrics
+    # (docs/adr/0028), never used for nutrition.
+    source: Literal["menu", "crafted"] = "menu"
 
 
 class LoggedMealItemOut(BaseModel):
@@ -63,6 +69,11 @@ class DaySummary(BaseModel):
     date: datetime.date
     totals: dict[str, float]
     goal: dict[str, float]
+    # Calories burned by that day's Exercise Entries, reported whether or
+    # not the user counts them toward the goal (docs/adr/0025) —
+    # `exercise_adds_to_goal` decides that, and `goal` stays the base goal.
+    exercise_calories: float = 0.0
+    exercise_adds_to_goal: bool = True
 
 
 def _totals_from_items(items: list[LoggedMealItemOut]) -> dict[str, float]:
@@ -201,6 +212,7 @@ def _log_meal(body: LoggedMealIn, user: User, db: Session) -> LoggedMealOut:
         meal.liked = body.liked
     meal.items = [i.model_dump() for i in computed_items]
     meal.totals = _totals_from_items(computed_items)
+    record_event(db, user.id, body.source, date)
     db.commit()
     db.refresh(meal)
 
@@ -259,6 +271,65 @@ def list_logged_meals(
     return [_to_out(db, m) for m in meals]
 
 
+RECENTS_DAYS = 30
+
+
+class RecentItem(BaseModel):
+    name: str
+    # The grams most recently logged for this name — what one tap re-adds.
+    grams: float
+    last_date: datetime.date
+
+
+class RecentsOut(BaseModel):
+    items: list[RecentItem]
+    # Meal Section -> the eatery the user last logged that section from,
+    # for defaulting the add-food flow's hall (docs/adr/0030).
+    last_eatery_by_section: dict[str, int]
+
+
+@router.get("/logged-meals/recents", response_model=RecentsOut)
+def logged_meal_recents(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Names and grams only; the client matches them against today's menu
+    and hides anything that isn't on it (docs/adr/0030)."""
+    since = datetime.date.today() - datetime.timedelta(days=RECENTS_DAYS - 1)
+    meals = (
+        db.query(LoggedMeal)
+        .filter(LoggedMeal.user_id == user.id, LoggedMeal.date >= since)
+        .order_by(LoggedMeal.date.desc(), LoggedMeal.created_at.desc())
+        .all()
+    )
+    events = {
+        e.id: e
+        for e in db.query(MenuEvent).filter(MenuEvent.id.in_([m.menu_event_id for m in meals if m.menu_event_id]))
+    }
+
+    items: dict[str, RecentItem] = {}
+    last_eatery_by_section: dict[str, int] = {}
+    # Newest first, so the first time a name or section is seen wins.
+    for meal in meals:
+        event = events.get(meal.menu_event_id)
+        if event is not None:
+            last_eatery_by_section.setdefault(meal_section_for(event.meal_period), event.eatery_id)
+        for item in meal.items:
+            if item["name"] not in items:
+                items[item["name"]] = RecentItem(name=item["name"], grams=item["grams"], last_date=meal.date)
+
+    return RecentsOut(items=list(items.values()), last_eatery_by_section=last_eatery_by_section)
+
+
+class StreakOut(BaseModel):
+    days: int
+    logged_today: bool
+
+
+@router.get("/logged-meals/streak", response_model=StreakOut)
+def logged_meals_streak(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> StreakOut:
+    """The Logging Streak shown on the Diary and Progress (docs/adr/0032)."""
+    streak = current_streak(db, user.id, datetime.date.today())
+    return StreakOut(days=streak.days, logged_today=streak.logged_today)
+
+
 @router.get("/logged-meals/summary", response_model=list[DaySummary])
 def logged_meals_summary(days: int = 7, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     prefs = db.query(UserPreference).filter(UserPreference.user_id == user.id).one_or_none()
@@ -279,14 +350,38 @@ def logged_meals_summary(days: int = 7, user: User = Depends(get_current_user), 
         .all()
     )
 
+    # Quick Add Entries count toward a day's totals like any food eaten
+    # (docs/adr/0024); they just aren't Logged Meals.
+    quick_adds = (
+        db.query(QuickAddEntry)
+        .filter(QuickAddEntry.user_id == user.id, QuickAddEntry.date >= start_date)
+        .all()
+    )
+
     totals_by_date: dict[datetime.date, dict[str, float]] = {}
     for meal in meals:
         day_totals = totals_by_date.setdefault(meal.date, {"calories": 0.0, "protein_g": 0.0, "carbs_g": 0.0, "fat_g": 0.0})
         for key in day_totals:
             day_totals[key] += meal.totals.get(key, 0.0)
+    for entry in quick_adds:
+        day_totals = totals_by_date.setdefault(entry.date, {"calories": 0.0, "protein_g": 0.0, "carbs_g": 0.0, "fat_g": 0.0})
+        for key in day_totals:
+            day_totals[key] += getattr(entry, key)
+
+    exercise_by_date: dict[datetime.date, float] = {}
+    for entry in db.query(ExerciseEntry).filter(ExerciseEntry.user_id == user.id, ExerciseEntry.date >= start_date):
+        exercise_by_date[entry.date] = exercise_by_date.get(entry.date, 0.0) + entry.calories
 
     out = []
     for i in range(days):
         d = start_date + datetime.timedelta(days=i)
-        out.append(DaySummary(date=d, totals=totals_by_date.get(d, {"calories": 0.0, "protein_g": 0.0, "carbs_g": 0.0, "fat_g": 0.0}), goal=goal))
+        out.append(
+            DaySummary(
+                date=d,
+                totals=totals_by_date.get(d, {"calories": 0.0, "protein_g": 0.0, "carbs_g": 0.0, "fat_g": 0.0}),
+                goal=goal,
+                exercise_calories=exercise_by_date.get(d, 0.0),
+                exercise_adds_to_goal=prefs.exercise_adds_to_goal,
+            )
+        )
     return out

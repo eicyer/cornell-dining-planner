@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { NavigationContainer, useFocusEffect, useNavigation } from '@react-navigation/native';
 import { createNativeStackNavigator, NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -6,6 +6,7 @@ import ChevronLeft from 'lucide-react-native/icons/chevron-left';
 import {
   EateryCrafted,
   EateryMenu,
+  MealSection,
   Me,
   Preferences,
   Totals,
@@ -24,7 +25,12 @@ import PreferencesForm from './PreferencesForm';
 import FoodSurveyScreen from './FoodSurveyScreen';
 import CraftedMealsList from './CraftedMealsList';
 import DiaryScreen from './DiaryScreen';
+import ProgressScreen from './ProgressScreen';
 import EateryDetailScreen from './EateryDetailScreen';
+import AddFoodScreen from './AddFoodScreen';
+import SetupScreen from './SetupScreen';
+import MoreScreen from './MoreScreen';
+import TabBar, { TabName } from './components/TabBar';
 import Button from './components/Button';
 import Icon from './components/Icon';
 import { colors, space, type } from './theme';
@@ -46,13 +52,18 @@ function HeaderBackButton() {
 
 export type RootStackParamList = {
   LoggedOut: undefined;
+  Setup: undefined;
   Survey: { existing: Preferences | null };
   FoodSurvey: undefined;
-  CraftedMeals: undefined;
+  // The four tabs (docs/adr/0029).
   Diary: undefined;
+  Menus: undefined;
+  Progress: undefined;
+  More: undefined;
   EateryDetail: { eatery: EateryMenu; perMealTarget: Totals | null };
   StationSurvey: { eatery: EateryMenu };
   MealPreferenceSurvey: undefined;
+  AddFood: { section: MealSection };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -71,23 +82,46 @@ const pushedHeaderOptions = {
   headerLeft: () => <HeaderBackButton />,
 } as const;
 
+const tabOptions = { animation: 'none' } as const;
+
 function LoggedOutScreen() {
   return (
     <View style={styles.center}>
       <Text style={styles.kicker}>Cornell Dining</Text>
-      <Text style={styles.title}>Plan your plate.</Text>
+      {/* docs/adr/0035 */}
+      <Text style={styles.title}>Your dining-hall food diary.</Text>
+      <Text style={styles.pitch}>
+        Log what you eat at Cornell's dining halls in a couple of taps. Every menu item comes with its nutrition.
+      </Text>
       <Button label="Sign in with Google →" onPress={() => Linking.openURL(loginUrl())} fullWidth={false} />
     </View>
   );
 }
 
+// Tabs are flat (docs/adr/0029): switching resets the stack to that tab's
+// root, so a tab never carries a back stack from another one.
+function switchTab(navigation: { reset: (state: any) => void }, tab: TabName) {
+  navigation.reset({ index: 0, routes: [{ name: tab }] });
+}
+
+// A tab's root screen with the tab bar under it. Pushed detail/step screens
+// render without this, so the bar hides while they're open.
+function TabScreen({ tab, navigation, children }: { tab: TabName; navigation: any; children: ReactNode }) {
+  return (
+    <View style={styles.tabScreen}>
+      <View style={styles.tabContent}>{children}</View>
+      <TabBar current={tab} onSelect={(next) => next !== tab && switchTab(navigation, next)} />
+    </View>
+  );
+}
+
 function SurveyRouteScreen({ route, navigation }: NativeStackScreenProps<RootStackParamList, 'Survey'>) {
-  function handleSaved(prefs: Preferences) {
-    if (!prefs.food_survey_completed) {
-      navigation.replace('FoodSurvey');
-      return;
-    }
-    navigation.replace('CraftedMeals');
+  // First run (reached from Setup's "own numbers" link) lands on the Diary
+  // (home); editing from More just returns there. The Food Preference Survey
+  // is no longer part of onboarding (docs/adr/0027).
+  function handleSaved() {
+    if (route.params.existing && navigation.canGoBack()) navigation.goBack();
+    else switchTab(navigation, 'Diary');
   }
   return (
     <ScrollView style={styles.pushedScroll} contentContainerStyle={styles.pushedContent}>
@@ -96,17 +130,32 @@ function SurveyRouteScreen({ route, navigation }: NativeStackScreenProps<RootSta
   );
 }
 
-function FoodSurveyRouteScreen({ navigation }: NativeStackScreenProps<RootStackParamList, 'FoodSurvey'>) {
+// First run for a user with no preferences yet (docs/adr/0031).
+function SetupRouteScreen({ navigation }: NativeStackScreenProps<RootStackParamList, 'Setup'>) {
   return (
     <ScrollView style={styles.pushedScroll} contentContainerStyle={styles.pushedContent}>
-      <FoodSurveyScreen onDone={() => navigation.replace('CraftedMeals')} />
+      <SetupScreen
+        onDone={() => switchTab(navigation, 'Diary')}
+        onManual={() => navigation.navigate('Survey', { existing: null })}
+      />
     </ScrollView>
   );
 }
 
-function CraftedMealsRouteScreen({ navigation }: NativeStackScreenProps<RootStackParamList, 'CraftedMeals'>) {
+function FoodSurveyRouteScreen({ navigation }: NativeStackScreenProps<RootStackParamList, 'FoodSurvey'>) {
+  return (
+    <ScrollView style={styles.pushedScroll} contentContainerStyle={styles.pushedContent}>
+      <FoodSurveyScreen
+        onDone={() => (navigation.canGoBack() ? navigation.goBack() : switchTab(navigation, 'Diary'))}
+      />
+    </ScrollView>
+  );
+}
+
+function MenusRouteScreen({ navigation }: NativeStackScreenProps<RootStackParamList, 'Menus'>) {
   const [eateries, setEateries] = useState<EateryCrafted[] | null>(null);
   const [perMealTarget, setPerMealTarget] = useState<Totals | null>(null);
+  const [tags, setTags] = useState<{ liked: string[]; disliked: string[] }>({ liked: [], disliked: [] });
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -115,6 +164,9 @@ function CraftedMealsRouteScreen({ navigation }: NativeStackScreenProps<RootStac
       const [data, prefs] = await Promise.all([getCraftedMealsToday(), getPreferences()]);
       setEateries(data);
       if (prefs) {
+        setTags({ liked: prefs.liked_tags, disliked: prefs.disliked_tags });
+        // Fallback only — each eatery's response carries the target its meal
+        // was actually sized to (docs/adr/0027).
         const n = Math.max(prefs.meals_per_day, 1);
         setPerMealTarget({
           calories: prefs.calorie_goal / n,
@@ -157,10 +209,62 @@ function CraftedMealsRouteScreen({ navigation }: NativeStackScreenProps<RootStac
     }
   }
 
+  let body: ReactNode;
+  if (error) {
+    body = (
+      <View style={styles.center}>
+        <Text style={styles.error}>Something went wrong: {error}</Text>
+      </View>
+    );
+  } else if (!eateries) {
+    body = (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={colors.accent} />
+      </View>
+    );
+  } else {
+    body = (
+      <CraftedMealsList
+        eateries={eateries}
+        perMealTarget={perMealTarget}
+        likedTags={tags.liked}
+        dislikedTags={tags.disliked}
+        refreshing={refreshing}
+        onRefresh={handleRefresh}
+        onSelectEatery={handleSelectEatery}
+      />
+    );
+  }
+
+  return (
+    <TabScreen tab="Menus" navigation={navigation}>
+      {body}
+    </TabScreen>
+  );
+}
+
+function DiaryRouteScreen({ navigation }: NativeStackScreenProps<RootStackParamList, 'Diary'>) {
+  return (
+    <TabScreen tab="Diary" navigation={navigation}>
+      <DiaryScreen onLog={(section) => navigation.navigate('AddFood', { section })} />
+    </TabScreen>
+  );
+}
+
+function ProgressRouteScreen({ navigation }: NativeStackScreenProps<RootStackParamList, 'Progress'>) {
+  return (
+    <TabScreen tab="Progress" navigation={navigation}>
+      <ProgressScreen />
+    </TabScreen>
+  );
+}
+
+function MoreRouteScreen({ navigation }: NativeStackScreenProps<RootStackParamList, 'More'>) {
+  const [error, setError] = useState<string | null>(null);
+
   async function handleUpdatePreferences() {
     try {
-      const prefs = await getPreferences();
-      navigation.navigate('Survey', { existing: prefs });
+      navigation.navigate('Survey', { existing: await getPreferences() });
     } catch (err: any) {
       setError(err.message);
     }
@@ -175,56 +279,21 @@ function CraftedMealsRouteScreen({ navigation }: NativeStackScreenProps<RootStac
     }
   }
 
-  if (error) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.error}>Something went wrong: {error}</Text>
-      </View>
-    );
-  }
-
-  if (!eateries) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.accent} />
-      </View>
-    );
-  }
-
   return (
-    <CraftedMealsList
-      eateries={eateries}
-      perMealTarget={perMealTarget}
-      refreshing={refreshing}
-      onRefresh={handleRefresh}
-      onGoToDiary={() => navigation.navigate('Diary')}
-      onSelectEatery={handleSelectEatery}
-      onLogout={handleLogout}
-      onUpdatePreferences={handleUpdatePreferences}
-      onRetakeFoodSurvey={() => navigation.navigate('FoodSurvey')}
-      onRefineMealPreferences={() => navigation.navigate('MealPreferenceSurvey')}
-    />
+    <TabScreen tab="More" navigation={navigation}>
+      {error && <Text style={[styles.error, styles.moreError]}>{error}</Text>}
+      <MoreScreen
+        onUpdatePreferences={handleUpdatePreferences}
+        onRetakeFoodSurvey={() => navigation.navigate('FoodSurvey')}
+        onRefineMealPreferences={() => navigation.navigate('MealPreferenceSurvey')}
+        onLogout={handleLogout}
+      />
+    </TabScreen>
   );
 }
 
-function DiaryRouteScreen({ navigation }: NativeStackScreenProps<RootStackParamList, 'Diary'>) {
-  async function handleUpdatePreferences() {
-    const prefs = await getPreferences();
-    navigation.navigate('Survey', { existing: prefs });
-  }
-  async function handleLogout() {
-    await logout();
-    navigation.reset({ index: 0, routes: [{ name: 'LoggedOut' }] });
-  }
-  return (
-    <DiaryScreen
-      onGoToToday={() => navigation.navigate('CraftedMeals')}
-      onLogout={handleLogout}
-      onUpdatePreferences={handleUpdatePreferences}
-      onRetakeFoodSurvey={() => navigation.navigate('FoodSurvey')}
-      onRefineMealPreferences={() => navigation.navigate('MealPreferenceSurvey')}
-    />
-  );
+function AddFoodRouteScreen({ route, navigation }: NativeStackScreenProps<RootStackParamList, 'AddFood'>) {
+  return <AddFoodScreen section={route.params.section} onDone={() => navigation.goBack()} />;
 }
 
 function EateryDetailRouteScreen({ route, navigation }: NativeStackScreenProps<RootStackParamList, 'EateryDetail'>) {
@@ -234,7 +303,7 @@ function EateryDetailRouteScreen({ route, navigation }: NativeStackScreenProps<R
       eatery={eatery}
       perMealTarget={perMealTarget}
       onCompare={() => navigation.navigate('StationSurvey', { eatery })}
-      onLogged={() => navigation.navigate('Diary')}
+      onLogged={() => switchTab(navigation, 'Diary')}
     />
   );
 }
@@ -271,7 +340,7 @@ function MealPreferenceSurveyRouteScreen({
 type BootState =
   | { kind: 'loading' }
   | { kind: 'error'; message: string }
-  | { kind: 'ready'; initialRoute: 'LoggedOut' | 'Survey' | 'FoodSurvey' | 'CraftedMeals'; surveyExisting: Preferences | null };
+  | { kind: 'ready'; initialRoute: 'LoggedOut' | 'Setup' | 'Diary'; surveyExisting: Preferences | null };
 
 function useBootstrap(): BootState {
   const [state, setState] = useState<BootState>({ kind: 'loading' });
@@ -287,14 +356,10 @@ function useBootstrap(): BootState {
         }
         const prefs: Preferences | null = await getPreferences();
         if (!prefs) {
-          if (!cancelled) setState({ kind: 'ready', initialRoute: 'Survey', surveyExisting: null });
+          if (!cancelled) setState({ kind: 'ready', initialRoute: 'Setup', surveyExisting: null });
           return;
         }
-        if (!prefs.food_survey_completed) {
-          if (!cancelled) setState({ kind: 'ready', initialRoute: 'FoodSurvey', surveyExisting: null });
-          return;
-        }
-        if (!cancelled) setState({ kind: 'ready', initialRoute: 'CraftedMeals', surveyExisting: null });
+        if (!cancelled) setState({ kind: 'ready', initialRoute: 'Diary', surveyExisting: null });
       } catch (err: any) {
         if (!cancelled) setState({ kind: 'error', message: err.message });
       }
@@ -334,6 +399,7 @@ export default function RootNavigator() {
         screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.paper } }}
       >
         <Stack.Screen name="LoggedOut" component={LoggedOutScreen} />
+        <Stack.Screen name="Setup" component={SetupRouteScreen} options={pushedHeaderOptions} />
         <Stack.Screen
           name="Survey"
           component={SurveyRouteScreen}
@@ -341,9 +407,13 @@ export default function RootNavigator() {
           options={pushedHeaderOptions}
         />
         <Stack.Screen name="FoodSurvey" component={FoodSurveyRouteScreen} options={pushedHeaderOptions} />
-        <Stack.Screen name="CraftedMeals" component={CraftedMealsRouteScreen} />
-        <Stack.Screen name="Diary" component={DiaryRouteScreen} />
+        {/* Tabs swap in place rather than sliding — see switchTab. */}
+        <Stack.Screen name="Diary" component={DiaryRouteScreen} options={tabOptions} />
+        <Stack.Screen name="Menus" component={MenusRouteScreen} options={tabOptions} />
+        <Stack.Screen name="Progress" component={ProgressRouteScreen} options={tabOptions} />
+        <Stack.Screen name="More" component={MoreRouteScreen} options={tabOptions} />
         <Stack.Screen name="EateryDetail" component={EateryDetailRouteScreen} options={pushedHeaderOptions} />
+        <Stack.Screen name="AddFood" component={AddFoodRouteScreen} options={pushedHeaderOptions} />
         <Stack.Screen name="StationSurvey" component={StationSurveyRouteScreen} options={pushedHeaderOptions} />
         <Stack.Screen
           name="MealPreferenceSurvey"
@@ -380,9 +450,20 @@ const styles = StyleSheet.create({
   },
   title: {
     ...type.display,
-    marginBottom: 24,
+    marginBottom: space.md,
+    textAlign: 'center',
+  },
+  pitch: {
+    ...type.body,
+    color: colors.inkSecondary,
+    textAlign: 'center',
+    maxWidth: 360,
+    marginBottom: space.xl,
   },
   headerBack: { paddingHorizontal: space.md, paddingVertical: space.sm },
+  tabScreen: { flex: 1, backgroundColor: colors.paper },
+  tabContent: { flex: 1 },
+  moreError: { paddingHorizontal: space.lg, paddingTop: space.lg },
   // Every route rendered under pushedHeaderOptions gets a real native header,
   // so — unlike the old app.tsx's surveyContainer — content no longer needs
   // a hand-tuned paddingTop to clear the status bar, and (fixing a

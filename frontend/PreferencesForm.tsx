@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import {
   ACTIVITY_LEVELS,
   ActivityLevel,
@@ -15,51 +15,17 @@ import {
   Sex,
   putPreferences,
   recommendTargets,
+  WEEKLY_PACES_KG,
 } from './api';
+import { ACTIVITY_LABELS, DEFAULT_PREFERENCES, HEALTH_GOAL_LABELS, floorMessage, paceForGoal, paceLabel } from './goals';
+import BodyStatsFields from './components/BodyStatsFields';
 import Button from './components/Button';
+import NumberField from './components/NumberField';
 import Chip from './components/Chip';
 import Disclosure from './components/Disclosure';
 import Tab from './components/Tab';
 import { light } from './haptics';
-import { colors, interaction, radius, space, touchTarget, type } from './theme';
-
-const DEFAULTS: Preferences = {
-  calorie_goal: 2200,
-  protein_goal_g: 150,
-  carb_goal_g: 220,
-  fat_goal_g: 70,
-  meals_per_day: 3,
-  diet_restrictions: [],
-  allergens: [],
-  age: null,
-  sex: null,
-  height_cm: null,
-  weight_kg: null,
-  activity_level: null,
-  health_goal: null,
-  macro_style: null,
-  target_mode: 'manual',
-  liked_foods_text: '',
-  disliked_foods_text: '',
-  liked_tags: [],
-  disliked_tags: [],
-  eating_styles: [],
-  food_survey_completed: false,
-};
-
-const ACTIVITY_LABELS: Record<ActivityLevel, string> = {
-  sedentary: 'Sedentary',
-  light: 'Light (1–3x/wk)',
-  moderate: 'Moderate (3–5x/wk)',
-  active: 'Active (6–7x/wk)',
-  very_active: 'Very active',
-};
-
-const HEALTH_GOAL_LABELS: Record<HealthGoal, string> = {
-  lose_weight: 'Lose weight',
-  maintain_weight: 'Maintain weight',
-  gain_weight: 'Gain weight',
-};
+import { colors, interaction, radius, space, type } from './theme';
 
 const MACRO_STYLE_LABELS: Record<MacroStyle, string> = {
   balanced: 'Balanced',
@@ -81,100 +47,6 @@ const SECTIONS = ['Daily targets', 'Diet & allergens', 'Eating style', 'Foods yo
 const round = (n: number) => Math.round(n).toLocaleString('en-US');
 const humanize = (s: string) => s.replace(/_/g, ' ');
 
-// height_cm/weight_kg are the only values the API ever sees (backend stays
-// metric — see backend/app/db/models.py) — ft/in/lb are a display-only input
-// mode for a US audience unlikely to know their stats in cm/kg offhand.
-const CM_PER_INCH = 2.54;
-const KG_PER_LB = 0.45359237;
-
-function cmToFeetInches(cm: number): { feet: number; inches: number } {
-  const totalInches = cm / CM_PER_INCH;
-  const feet = Math.floor(totalInches / 12);
-  const inches = Math.round(totalInches - feet * 12);
-  // Rounding inches up to 12 rolls into the next foot (e.g. 5'11.6" -> 6'0").
-  return inches === 12 ? { feet: feet + 1, inches: 0 } : { feet, inches };
-}
-
-function feetInchesToCm(feet: number, inches: number): number {
-  return Math.round((feet * 12 + inches) * CM_PER_INCH);
-}
-
-function kgToLb(kg: number): number {
-  return Math.round(kg / KG_PER_LB);
-}
-
-function lbToKg(lb: number): number {
-  return Math.round((lb * KG_PER_LB) * 10) / 10;
-}
-
-// A bordered 1px square, matching PortionStepper's existing +/- idiom rather
-// than introducing a second stepper look. 32pt + 10 hitSlop = 52pt tap target.
-function StepButton({ label, onPress, disabled }: { label: string; onPress: () => void; disabled?: boolean }) {
-  function handlePress() {
-    light();
-    onPress();
-  }
-  return (
-    <Pressable
-      onPress={handlePress}
-      disabled={disabled}
-      hitSlop={10}
-      accessibilityRole="button"
-      accessibilityLabel={label === '+' ? 'Increase' : 'Decrease'}
-      style={({ pressed }) => [styles.stepButton, pressed && styles.stepButtonPressed]}
-    >
-      <Text style={[styles.stepButtonText, disabled && styles.stepButtonTextDisabled]}>{label}</Text>
-    </Pressable>
-  );
-}
-
-function NumberField({
-  label,
-  value,
-  onChange,
-  decimal,
-  caption,
-  step,
-  min = 0,
-  max = Number.MAX_SAFE_INTEGER,
-}: {
-  label: string;
-  value: number | null;
-  onChange: (v: number) => void;
-  decimal?: boolean;
-  caption?: string;
-  // Present on the target fields, where nudging by a sensible increment beats
-  // selecting text and retyping a four-digit number on a phone. Omitted on the
-  // body-stat fields, which are typed once and never adjusted by feel.
-  step?: number;
-  min?: number;
-  max?: number;
-}) {
-  const clamp = (n: number) => Math.min(max, Math.max(min, n));
-  return (
-    <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
-      <View style={styles.numberRow}>
-        {step != null && (
-          <StepButton label="–" onPress={() => onChange(clamp((value ?? 0) - step))} disabled={(value ?? 0) <= min} />
-        )}
-        <TextInput
-          style={[styles.numberInput, step != null && styles.numberInputStepped]}
-          keyboardType={decimal ? 'decimal-pad' : 'numeric'}
-          value={value == null ? '' : String(value)}
-          onChangeText={(text) => {
-            const cleaned = decimal ? text.replace(/[^0-9.]/g, '') : text.replace(/[^0-9]/g, '');
-            onChange(Number(cleaned) || 0);
-          }}
-        />
-        {step != null && (
-          <StepButton label="+" onPress={() => onChange(clamp((value ?? 0) + step))} disabled={(value ?? 0) >= max} />
-        )}
-      </View>
-      {caption && <Text style={styles.fieldCaption}>{caption}</Text>}
-    </View>
-  );
-}
 
 export default function PreferencesForm({
   initial,
@@ -184,13 +56,13 @@ export default function PreferencesForm({
   onSaved: (prefs: Preferences) => void;
 }) {
   const isUpdate = !!initial;
-  const [prefs, setPrefs] = useState<Preferences>(initial ?? DEFAULTS);
+  const [prefs, setPrefs] = useState<Preferences>(initial ?? DEFAULT_PREFERENCES);
   // First-time setup opens section 1 so there's an obvious place to start;
   // returning to edit opens nothing, so the screen is a scannable summary of
   // every existing answer instead of ~400 lines of fields.
   const [openSection, setOpenSection] = useState<number | null>(isUpdate ? null : 0);
   const [targetTab, setTargetTab] = useState<'recommend' | 'manual'>(
-    (initial ?? DEFAULTS).target_mode === 'recommended' ? 'recommend' : 'manual'
+    (initial ?? DEFAULT_PREFERENCES).target_mode === 'recommended' ? 'recommend' : 'manual'
   );
   const [calculating, setCalculating] = useState(false);
   const [calcError, setCalcError] = useState<string | null>(null);
@@ -200,44 +72,8 @@ export default function PreferencesForm({
 
   // Defaults to imperial — the intended audience is US college students, who
   // are far more likely to know their height/weight in ft/in/lb than cm/kg.
-  // prefs.height_cm/weight_kg stay the single source of truth either way;
-  // these three only exist to display/edit that value in ft/in/lb terms.
-  const [unitSystem, setUnitSystem] = useState<'metric' | 'imperial'>('imperial');
-  const [heightFeet, setHeightFeet] = useState<number | null>(() =>
-    prefs.height_cm ? cmToFeetInches(prefs.height_cm).feet : null
-  );
-  const [heightInches, setHeightInches] = useState<number | null>(() =>
-    prefs.height_cm ? cmToFeetInches(prefs.height_cm).inches : null
-  );
-  const [weightLb, setWeightLb] = useState<number | null>(() => (prefs.weight_kg ? kgToLb(prefs.weight_kg) : null));
-
-  // Switching into imperial re-derives ft/in/lb from whatever's currently in
-  // prefs, so a value typed in cm/kg while on the metric tab shows up
-  // correctly converted rather than a stale snapshot from mount.
-  function switchUnitSystem(system: 'metric' | 'imperial') {
-    if (system === 'imperial') {
-      const { feet, inches } = prefs.height_cm ? cmToFeetInches(prefs.height_cm) : { feet: null, inches: null };
-      setHeightFeet(feet);
-      setHeightInches(inches);
-      setWeightLb(prefs.weight_kg ? kgToLb(prefs.weight_kg) : null);
-    }
-    setUnitSystem(system);
-  }
-
-  function handleHeightFeetChange(feet: number) {
-    setHeightFeet(feet);
-    setPrefs((p) => ({ ...p, height_cm: feetInchesToCm(feet, heightInches ?? 0) }));
-  }
-
-  function handleHeightInchesChange(inches: number) {
-    setHeightInches(inches);
-    setPrefs((p) => ({ ...p, height_cm: feetInchesToCm(heightFeet ?? 0, inches) }));
-  }
-
-  function handleWeightLbChange(lb: number) {
-    setWeightLb(lb);
-    setPrefs((p) => ({ ...p, weight_kg: lbToKg(lb) }));
-  }
+  // Saved with the rest of the form — Progress shows weights in it too.
+  const unitSystem = prefs.unit_system;
 
   function toggle(list: string[], value: string): string[] {
     return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
@@ -266,6 +102,7 @@ export default function PreferencesForm({
         activity_level: prefs.activity_level,
         health_goal: prefs.health_goal,
         macro_style: prefs.macro_style ?? 'balanced',
+        weekly_pace_kg: prefs.weekly_pace_kg,
       });
       setCalcResult(result);
       setPrefs((p) => ({
@@ -405,48 +242,12 @@ export default function PreferencesForm({
 
             <NumberField label="Age" value={prefs.age} caption="13–100" onChange={(v) => setPrefs({ ...prefs, age: v })} />
 
-            <Text style={styles.label}>Units</Text>
-            <View style={styles.tabRow}>
-              <Tab label="ft/in · lb" active={unitSystem === 'imperial'} onPress={() => switchUnitSystem('imperial')} />
-              <Tab label="cm · kg" active={unitSystem === 'metric'} onPress={() => switchUnitSystem('metric')} />
-            </View>
-
-            {unitSystem === 'imperial' ? (
-              <>
-                <View style={styles.heightRow}>
-                  <View style={styles.heightRowItem}>
-                    <NumberField label="Height (ft)" value={heightFeet} onChange={handleHeightFeetChange} />
-                  </View>
-                  <View style={styles.heightRowItem}>
-                    <NumberField label="Height (in)" value={heightInches} onChange={handleHeightInchesChange} />
-                  </View>
-                </View>
-                <Text style={styles.heightCaption}>3'11" – 7'6"</Text>
-                <NumberField
-                  label="Weight (lb)"
-                  value={weightLb}
-                  caption="66–661 lb"
-                  onChange={handleWeightLbChange}
-                />
-              </>
-            ) : (
-              <>
-                <NumberField
-                  label="Height (cm)"
-                  decimal
-                  value={prefs.height_cm}
-                  caption="120–230 cm"
-                  onChange={(v) => setPrefs({ ...prefs, height_cm: v })}
-                />
-                <NumberField
-                  label="Weight (kg)"
-                  decimal
-                  value={prefs.weight_kg}
-                  caption="30–300 kg"
-                  onChange={(v) => setPrefs({ ...prefs, weight_kg: v })}
-                />
-              </>
-            )}
+            <BodyStatsFields
+              heightCm={prefs.height_cm}
+              weightKg={prefs.weight_kg}
+              unitSystem={unitSystem}
+              onChange={(change) => setPrefs((p) => ({ ...p, ...change }))}
+            />
 
             <Text style={styles.label}>Sex</Text>
             <Text style={styles.fieldCaption}>Used only for the calorie formula above.</Text>
@@ -462,11 +263,16 @@ export default function PreferencesForm({
                 <Chip
                   key={level}
                   label={ACTIVITY_LABELS[level]}
+                  verbatim
                   selected={prefs.activity_level === level}
                   onPress={() => setPrefs({ ...prefs, activity_level: level })}
                 />
               ))}
             </View>
+            {/* docs/adr/0025: logged workouts add to the budget on their own. */}
+            <Text style={styles.fieldCaption}>
+              Logging workouts in the Diary? Pick the level for your days without them, so they aren't counted twice.
+            </Text>
 
             <Text style={styles.label}>Health goal</Text>
             <View style={styles.chipRow}>
@@ -474,11 +280,31 @@ export default function PreferencesForm({
                 <Chip
                   key={goal}
                   label={HEALTH_GOAL_LABELS[goal]}
+                  verbatim
                   selected={prefs.health_goal === goal}
-                  onPress={() => setPrefs({ ...prefs, health_goal: goal })}
+                  onPress={() =>
+                    setPrefs({ ...prefs, health_goal: goal, weekly_pace_kg: paceForGoal(goal, prefs.weekly_pace_kg) })
+                  }
                 />
               ))}
             </View>
+
+            {prefs.health_goal && WEEKLY_PACES_KG[prefs.health_goal].length > 0 && (
+              <>
+                <Text style={styles.label}>Weekly pace</Text>
+                <View style={styles.chipRow}>
+                  {WEEKLY_PACES_KG[prefs.health_goal].map((pace) => (
+                    <Chip
+                      key={pace}
+                      label={paceLabel(pace, unitSystem)}
+                      verbatim
+                      selected={prefs.weekly_pace_kg === pace}
+                      onPress={() => setPrefs({ ...prefs, weekly_pace_kg: pace })}
+                    />
+                  ))}
+                </View>
+              </>
+            )}
 
             <Text style={styles.label}>Macro style</Text>
             <Text style={styles.fieldCaption}>How calories split across protein/carbs/fat. Protein stays the same either way.</Text>
@@ -507,6 +333,9 @@ export default function PreferencesForm({
                 BMR {calcResult.bmr} cal · TDEE {calcResult.tdee} cal/day — targets below are filled in, edit them
                 freely.
               </Text>
+            )}
+            {calcResult && prefs.sex && floorMessage(calcResult, prefs.sex) && (
+              <Text style={styles.fieldCaption}>{floorMessage(calcResult, prefs.sex)}</Text>
             )}
           </View>
         ) : (
@@ -563,7 +392,7 @@ export default function PreferencesForm({
           onChange={(v) => setPrefs({ ...prefs, fat_goal_g: v })}
         />
         <NumberField
-          label="Meals per day"
+          label="Meals per day (for suggested meals)"
           step={1}
           min={1}
           max={8}
@@ -592,6 +421,23 @@ export default function PreferencesForm({
           Split across {mealCount} {mealCount === 1 ? 'meal' : 'meals'}: ≈{round(prefs.calorie_goal / mealCount)} cal ·{' '}
           {round(prefs.protein_goal_g / mealCount)}g protein · {round(prefs.carb_goal_g / mealCount)}g carbs ·{' '}
           {round(prefs.fat_goal_g / mealCount)}g fat per meal.
+        </Text>
+
+        <Text style={styles.label}>Logged exercise</Text>
+        <View style={styles.chipRow}>
+          <Chip
+            label="Adds to my budget"
+            selected={prefs.exercise_adds_to_goal}
+            onPress={() => setPrefs({ ...prefs, exercise_adds_to_goal: true })}
+          />
+          <Chip
+            label="Doesn't change my budget"
+            selected={!prefs.exercise_adds_to_goal}
+            onPress={() => setPrefs({ ...prefs, exercise_adds_to_goal: false })}
+          />
+        </View>
+        <Text style={styles.fieldCaption}>
+          Choose "Doesn't change" if your activity level already includes the workouts you log.
         </Text>
 
         <NextLink index={0} />
@@ -701,7 +547,7 @@ export default function PreferencesForm({
       {error && <Text style={styles.error}>{error}</Text>}
 
       <Button
-        label={saving ? 'Saving…' : isUpdate ? 'Save changes →' : 'Save & see meals →'}
+        label={saving ? 'Saving…' : isUpdate ? 'Save changes →' : 'Save & start your diary →'}
         onPress={handleSave}
         disabled={saving}
         style={styles.saveButton}
@@ -716,46 +562,11 @@ const styles = StyleSheet.create({
   subtitle: { ...type.body, color: colors.inkSecondary, marginBottom: space.md },
   progress: { ...type.kicker, color: colors.inkSecondary },
   progressHint: { ...type.caption, marginTop: space.xs, marginBottom: space.lg },
-  field: { marginBottom: space.md },
   label: { ...type.kicker, marginTop: space.sm, marginBottom: space.sm },
   dailyTargetsLabel: { marginTop: space.xl },
   suggestion: { marginTop: -space.xs, marginBottom: space.lg },
   fieldCaption: { ...type.caption, marginTop: space.xs },
-  // Sits below the ft/in row instead of inside either NumberField (a single
-  // combined range reads better than repeating half of it per field) — needs
-  // its own bottom margin since it's outside NumberField's own `field` wrapper,
-  // which already supplies the gap above via its own marginBottom.
-  heightCaption: { ...type.caption, marginBottom: space.md },
   helperText: { ...type.body, color: colors.inkSecondary, marginBottom: space.md },
-  numberRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-  numberInput: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.ink,
-    borderRadius: radius.none,
-    paddingVertical: space.sm,
-    // Direct backstop for the 44pt touch-target minimum — see Phase 6 audit
-    // (same reasoning as EateryDetailScreen's gramsInput).
-    minHeight: touchTarget.min,
-    fontFamily: 'IBMPlexMono_400Regular',
-    fontSize: 17,
-    color: colors.ink,
-    width: 120,
-  },
-  // Narrower once flanked by +/- buttons, so the whole control still fits a
-  // narrow phone without the row wrapping.
-  numberInputStepped: { width: 84, textAlign: 'center' },
-  stepButton: {
-    width: 32,
-    height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.ink,
-    ...Platform.select({ web: { cursor: 'pointer' as const }, default: {} }),
-  },
-  stepButtonPressed: { opacity: interaction.pressedOpacity },
-  stepButtonText: { fontFamily: 'IBMPlexMono_500Medium', fontSize: 18, lineHeight: 20, color: colors.ink },
-  stepButtonTextDisabled: { color: colors.inkTertiary },
   textArea: {
     borderBottomWidth: 1,
     borderBottomColor: colors.hairline,
@@ -768,8 +579,6 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   tabRow: { flexDirection: 'row', gap: space.lg, marginBottom: space.lg },
-  heightRow: { flexDirection: 'row', gap: space.md },
-  heightRowItem: { flex: 1 },
   recommendPanel: { marginBottom: space.sm },
   calcButton: { marginTop: space.md },
   calcResult: { ...type.mono, marginTop: space.md },

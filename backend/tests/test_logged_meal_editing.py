@@ -10,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.deps import get_current_user
-from app.db.models import Eatery, LoggedMeal, MenuEvent, MenuItem, NutritionMatch, NutritionSource, User
+from app.db.models import Eatery, LoggedMeal, LoggingEvent, MenuEvent, MenuItem, NutritionMatch, NutritionSource, User
 from app.db.session import SessionLocal
 from app.main import app
 from tests.conftest import ALLOWED_ORIGIN
@@ -81,6 +81,7 @@ def users(db):
 
     ids = [u.id for u in created]
     db.query(LoggedMeal).filter(LoggedMeal.user_id.in_(ids)).delete()
+    db.query(LoggingEvent).filter(LoggingEvent.user_id.in_(ids)).delete()
     db.query(User).filter(User.id.in_(ids)).delete()
     db.commit()
 
