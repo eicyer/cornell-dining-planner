@@ -464,6 +464,16 @@ export async function getLoggedMealsSummary(days = 7): Promise<DaySummary[]> {
   return res.json();
 }
 
+// Logging Streak (docs/adr/0032): consecutive Logging Days ending today, or
+// yesterday while today has nothing logged yet.
+export type Streak = { days: number; logged_today: boolean };
+
+export async function getStreak(): Promise<Streak> {
+  const res = await apiFetch('/logged-meals/streak');
+  if (!res.ok) throw new Error(`GET /logged-meals/streak failed: ${res.status}`);
+  return res.json();
+}
+
 // Food from anywhere other than a dining-hall menu (docs/adr/0024). Unlike
 // a Logged Meal, these numbers are the user's own and stored as entered,
 // and the Meal Section is chosen rather than derived.

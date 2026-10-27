@@ -9,12 +9,14 @@ import {
   MealSection,
   Preferences,
   QuickAddEntry,
+  Streak,
   Totals,
   getExercise,
   getExerciseActivities,
   getLoggedMeals,
   getPreferences,
   getQuickAdds,
+  getStreak,
   rateMeal,
 } from './api';
 import CalorieSummary from './components/CalorieSummary';
@@ -38,10 +40,17 @@ export default function DiaryScreen({ onLog }: { onLog: (section: MealSection) =
   // a spinner inside the sections instead of blanking the screen.
   const [loaded, setLoaded] = useState(false);
   const [prefs, setPrefs] = useState<Preferences | null>(null);
+  const [streak, setStreak] = useState<Streak | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Fire-and-forget: the streak line is decoration, never worth an error.
+  function refreshStreak() {
+    getStreak().then(setStreak, () => {});
+  }
+
   async function load(date: string) {
+    refreshStreak();
     try {
       const [m, q, e, p] = await Promise.all([
         getLoggedMeals(date),
@@ -105,6 +114,7 @@ export default function DiaryScreen({ onLog }: { onLog: (section: MealSection) =
 
   function handleDeleted(mealId: number) {
     setMeals((prev) => (prev ? prev.filter((m) => m.id !== mealId) : prev));
+    refreshStreak();
   }
 
   // Covers both a new entry and an edit (which may have moved it to
@@ -113,10 +123,12 @@ export default function DiaryScreen({ onLog }: { onLog: (section: MealSection) =
     setQuickAdds((prev) =>
       prev.some((q) => q.id === entry.id) ? prev.map((q) => (q.id === entry.id ? entry : q)) : [...prev, entry]
     );
+    refreshStreak();
   }
 
   function handleQuickAddDeleted(entryId: number) {
     setQuickAdds((prev) => prev.filter((q) => q.id !== entryId));
+    refreshStreak();
   }
 
   function handleExerciseSaved(entry: ExerciseEntry) {
@@ -172,6 +184,11 @@ export default function DiaryScreen({ onLog }: { onLog: (section: MealSection) =
         <Text style={styles.kicker}>{selectedDate === today ? 'Today' : longDateLabel(selectedDate)}</Text>
         <Text style={styles.title}>Diary</Text>
         <WeekStrip selected={selectedDate} today={today} onSelect={setSelectedDate} />
+        {selectedDate === today && streak && streak.days >= 2 && (
+          <Text style={styles.streak}>
+            {streak.days} days in a row{streak.logged_today ? '' : ' — log today to keep it going'}
+          </Text>
+        )}
       </View>
 
       <CalorieSummary totals={dayTotals} goal={goal} exercise={exerciseAddsToGoal ? exerciseCalories : 0} />
@@ -234,5 +251,7 @@ const styles = StyleSheet.create({
   error: { ...type.body, color: colors.accent, textAlign: 'center' },
   kicker: { ...type.kicker, marginBottom: space.xs },
   title: { ...type.display, fontSize: 28, marginBottom: space.lg },
+  // Quiet on purpose (docs/adr/0032): caption ink, no accent, no badge.
+  streak: { ...type.caption, marginTop: space.sm },
   sectionsLoading: { marginTop: space.xxl },
 });
