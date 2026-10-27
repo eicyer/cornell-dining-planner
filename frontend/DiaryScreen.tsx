@@ -213,37 +213,6 @@ export default function DiaryScreen({
           />
         )}
       </View>
-
-      {prefs && (prefs.liked_tags.length > 0 || prefs.disliked_tags.length > 0) ? (
-        <View style={styles.tagsSection}>
-          {prefs.liked_tags.length > 0 && (
-            <>
-              <Text style={styles.sectionTitle}>You tend to like</Text>
-              <View style={styles.tagRow}>
-                {prefs.liked_tags.map((tag) => (
-                  <Text key={tag} style={styles.tag}>
-                    {tag.replace(/_/g, ' ')}
-                  </Text>
-                ))}
-              </View>
-            </>
-          )}
-          {prefs.disliked_tags.length > 0 && (
-            <>
-              <Text style={styles.sectionTitle}>You tend to avoid</Text>
-              <View style={styles.tagRow}>
-                {prefs.disliked_tags.map((tag) => (
-                  <Text key={tag} style={styles.tag}>
-                    {tag.replace(/_/g, ' ')}
-                  </Text>
-                ))}
-              </View>
-            </>
-          )}
-        </View>
-      ) : (
-        <View />
-      )}
     </ScrollView>
   );
 }
@@ -272,25 +241,4 @@ const styles = StyleSheet.create({
   kicker: { ...type.kicker, marginBottom: space.xs },
   title: { ...type.display, fontSize: 28, marginBottom: space.lg },
   sectionsLoading: { marginTop: space.xxl },
-  sectionTitle: {
-    ...type.kicker,
-    marginBottom: space.md,
-    marginTop: space.sm,
-    paddingBottom: space.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.hairline,
-  },
-  tagsSection: { marginTop: space.xxxl },
-  tagRow: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: space.lg },
-  tag: {
-    ...type.body,
-    fontSize: 13,
-    color: colors.ink,
-    textTransform: 'capitalize',
-    borderBottomWidth: 2,
-    borderBottomColor: colors.accent,
-    paddingVertical: space.xs,
-    marginRight: space.md,
-    marginBottom: space.xs,
-  },
 });
