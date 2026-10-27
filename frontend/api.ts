@@ -67,6 +67,7 @@ export const MACRO_STYLES = ['balanced', 'lower_carb', 'keto', 'high_protein'] a
 export type MacroStyle = (typeof MACRO_STYLES)[number];
 
 export type Sex = 'male' | 'female';
+export type UnitSystem = 'imperial' | 'metric';
 export type TargetMode = 'recommended' | 'manual';
 
 export type Preferences = {
@@ -91,6 +92,10 @@ export type Preferences = {
   disliked_tags: string[];
   eating_styles: string[];
   food_survey_completed: boolean;
+  // docs/adr/0025 — whether Exercise Entries add to the day's budget.
+  exercise_adds_to_goal: boolean;
+  // docs/adr/0026 — display units only; the API is always metric.
+  unit_system: UnitSystem;
 };
 
 export async function getPreferences(): Promise<Preferences | null> {
@@ -245,6 +250,10 @@ export type EateryCrafted = {
   meal_period: string | null;
   crafted_meal: CraftedMeal | null;
   reason_unavailable: string | null;
+  // What crafted_meal was sized to: the Remaining-Budget Target once
+  // anything is logged today, else goal ÷ meals_per_day (docs/adr/0027).
+  target: Totals | null;
+  sized_to_remaining: boolean;
 };
 
 export async function getCraftedMealsToday(): Promise<EateryCrafted[]> {
@@ -261,6 +270,7 @@ export type NextMeal = {
   meal_period: string;
   crafted_meal: CraftedMeal | null;
   reason_unavailable: string | null;
+  target: Totals | null;
 };
 
 // Up to a few ranked meal options for one eatery — see the eatery-detail
@@ -277,6 +287,9 @@ export type EateryCraftedOptions = {
   // Later meal periods still being served today at this eatery, in serving
   // order — empty once the current pick is the last period of the day.
   next_meals: NextMeal[];
+  // What crafted_meals were sized to (docs/adr/0027).
+  target: Totals | null;
+  sized_to_remaining: boolean;
 };
 
 export async function getCraftedMealsForEatery(eateryId: number): Promise<EateryCraftedOptions> {
@@ -417,7 +430,15 @@ export async function getLoggedMeals(date?: string): Promise<LoggedMeal[]> {
   return res.json();
 }
 
-export type DaySummary = { date: string; totals: Totals; goal: Totals };
+// `goal` is the base goal; when `exercise_adds_to_goal`, the day's budget
+// is goal + exercise_calories (docs/adr/0025).
+export type DaySummary = {
+  date: string;
+  totals: Totals;
+  goal: Totals;
+  exercise_calories: number;
+  exercise_adds_to_goal: boolean;
+};
 
 export async function getLoggedMealsSummary(days = 7): Promise<DaySummary[]> {
   const res = await apiFetch(`/logged-meals/summary?days=${days}`);
@@ -477,4 +498,93 @@ export async function updateQuickAdd(entryId: number, input: QuickAddInput): Pro
 export async function deleteQuickAdd(entryId: number): Promise<void> {
   const res = await apiFetch(`/quick-add/${entryId}`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`DELETE /quick-add/${entryId} failed: ${res.status}`);
+}
+
+// One logged workout (docs/adr/0025). Calories are estimated server-side
+// from activity × minutes × weight unless `calories_typed`.
+export type ExerciseEntry = {
+  id: number;
+  date: string;
+  activity: string;
+  label: string;
+  minutes: number;
+  calories: number;
+  calories_typed: boolean;
+};
+
+export type ExerciseActivity = { key: string; label: string };
+
+// `activity: 'other'` always needs `calories`; omitted calories otherwise
+// mean "estimate it".
+export type ExerciseInput = { activity: string; minutes: number; calories: number | null; label: string | null };
+
+export const OTHER_ACTIVITY = 'other';
+
+export async function getExerciseActivities(): Promise<ExerciseActivity[]> {
+  const res = await apiFetch('/exercise/activities');
+  if (!res.ok) throw new Error(`GET /exercise/activities failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getExercise(date: string): Promise<ExerciseEntry[]> {
+  const res = await apiFetch(`/exercise?date=${date}`);
+  if (!res.ok) throw new Error(`GET /exercise failed: ${res.status}`);
+  return res.json();
+}
+
+export async function createExercise(date: string, input: ExerciseInput): Promise<ExerciseEntry> {
+  const res = await apiFetch('/exercise', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ date, ...input }),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `POST /exercise failed: ${res.status}`));
+  return res.json();
+}
+
+export async function replaceExercise(entryId: number, input: ExerciseInput): Promise<ExerciseEntry> {
+  const res = await apiFetch(`/exercise/${entryId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `PUT /exercise/${entryId} failed: ${res.status}`));
+  return res.json();
+}
+
+export async function deleteExercise(entryId: number): Promise<void> {
+  const res = await apiFetch(`/exercise/${entryId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`DELETE /exercise/${entryId} failed: ${res.status}`);
+}
+
+// One Weigh-in per day (docs/adr/0026). History only — targets change
+// only through recalculateTargets().
+export type WeighIn = { date: string; weight_kg: number };
+
+export async function getWeighIns(days = 90): Promise<WeighIn[]> {
+  const res = await apiFetch(`/weight?days=${days}`);
+  if (!res.ok) throw new Error(`GET /weight failed: ${res.status}`);
+  return res.json();
+}
+
+export async function putWeighIn(date: string, weightKg: number): Promise<WeighIn> {
+  const res = await apiFetch(`/weight/${date}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ weight_kg: weightKg }),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `PUT /weight/${date} failed: ${res.status}`));
+  return res.json();
+}
+
+export async function deleteWeighIn(date: string): Promise<void> {
+  const res = await apiFetch(`/weight/${date}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`DELETE /weight/${date} failed: ${res.status}`);
+}
+
+// Re-runs Recommended Targets with the latest Weigh-in and saves them.
+export async function recalculateTargets(): Promise<Preferences> {
+  const res = await apiFetch('/preferences/recalculate-targets', { method: 'POST' });
+  if (!res.ok) throw new Error(await errorMessage(res, `POST /preferences/recalculate-targets failed: ${res.status}`));
+  return res.json();
 }

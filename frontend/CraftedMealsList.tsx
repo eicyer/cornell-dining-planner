@@ -16,9 +16,12 @@ function todayKicker(): string {
 export default function CraftedMealsList({
   eateries,
   perMealTarget,
+  likedTags,
+  dislikedTags,
   refreshing,
   onRefresh,
   onGoToDiary,
+  onGoToProgress,
   onSelectEatery,
   onLogout,
   onUpdatePreferences,
@@ -27,9 +30,12 @@ export default function CraftedMealsList({
 }: {
   eateries: EateryCrafted[];
   perMealTarget: Totals | null;
+  likedTags: string[];
+  dislikedTags: string[];
   refreshing: boolean;
   onRefresh: () => void;
   onGoToDiary: () => void;
+  onGoToProgress: () => void;
   onSelectEatery: (eateryId: number) => void;
   onLogout: () => void;
   onUpdatePreferences: () => void;
@@ -62,6 +68,7 @@ export default function CraftedMealsList({
         current="today"
         onGoToToday={() => {}}
         onGoToDiary={onGoToDiary}
+        onGoToProgress={onGoToProgress}
         onUpdatePreferences={onUpdatePreferences}
         onRetakeFoodSurvey={onRetakeFoodSurvey}
         onRefineMealPreferences={onRefineMealPreferences}
@@ -71,6 +78,9 @@ export default function CraftedMealsList({
       <View style={styles.masthead}>
         <Text style={styles.kicker}>{todayKicker()}</Text>
         <Text style={styles.title}>Today's Meals For You</Text>
+        {eateries.some((e) => e.sized_to_remaining) && (
+          <Text style={styles.sizedNote}>Sized to what's left of today's budget.</Text>
+        )}
       </View>
 
       {eateries.map((eatery) => {
@@ -92,7 +102,7 @@ export default function CraftedMealsList({
               <CraftedMealCard
                 meal={eatery.crafted_meal}
                 mealPeriod={eatery.meal_period ?? ''}
-                perMealTarget={perMealTarget}
+                perMealTarget={eatery.target ?? perMealTarget}
                 status={status}
                 onLog={(items) => handleLog(eatery, items)}
                 onUndoLog={() => setLogStatus((s) => ({ ...s, [eatery.id]: 'idle' }))}
@@ -102,8 +112,31 @@ export default function CraftedMealsList({
           </View>
         );
       })}
+
+      {/* Moved here from the Diary (docs/adr/0027): the taste profile only
+          matters to suggestions. Soft Preferences rank, never filter. */}
+      {(likedTags.length > 0 || dislikedTags.length > 0) && (
+        <View style={styles.tastes}>
+          {likedTags.length > 0 && (
+            <Text style={styles.tasteLine}>
+              <Text style={styles.tasteKicker}>Suggestions lean toward </Text>
+              {humanizeTags(likedTags)}
+            </Text>
+          )}
+          {dislikedTags.length > 0 && (
+            <Text style={styles.tasteLine}>
+              <Text style={styles.tasteKicker}>…and away from </Text>
+              {humanizeTags(dislikedTags)}
+            </Text>
+          )}
+        </View>
+      )}
     </ScrollView>
   );
+}
+
+function humanizeTags(tags: string[]): string {
+  return tags.map((t) => t.replace(/_/g, ' ')).join(' · ');
 }
 
 const styles = StyleSheet.create({
@@ -111,6 +144,10 @@ const styles = StyleSheet.create({
   // No paddingTop: TopNav owns the status-bar/notch clearance for this screen.
   content: { paddingHorizontal: space.lg, paddingBottom: space.xl, maxWidth: 640, width: '100%', alignSelf: 'center' },
   masthead: { marginBottom: space.xxl },
+  sizedNote: { ...type.editorialItalic, marginTop: space.xs },
+  tastes: { marginTop: space.xl, paddingTop: space.md, borderTopWidth: 1, borderTopColor: colors.hairline, gap: space.xs },
+  tasteLine: { ...type.body, fontSize: 13, color: colors.inkSecondary },
+  tasteKicker: { ...type.editorialItalic, fontSize: 13 },
   kicker: { ...type.kicker, marginBottom: space.xs },
   title: { fontFamily: 'Fraunces_700Bold', fontSize: 30, lineHeight: 36, color: colors.ink },
   eatery: {

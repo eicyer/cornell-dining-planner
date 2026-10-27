@@ -24,6 +24,7 @@ import PreferencesForm from './PreferencesForm';
 import FoodSurveyScreen from './FoodSurveyScreen';
 import CraftedMealsList from './CraftedMealsList';
 import DiaryScreen from './DiaryScreen';
+import ProgressScreen from './ProgressScreen';
 import EateryDetailScreen from './EateryDetailScreen';
 import Button from './components/Button';
 import Icon from './components/Icon';
@@ -50,6 +51,7 @@ export type RootStackParamList = {
   FoodSurvey: undefined;
   CraftedMeals: undefined;
   Diary: undefined;
+  Progress: undefined;
   EateryDetail: { eatery: EateryMenu; perMealTarget: Totals | null };
   StationSurvey: { eatery: EateryMenu };
   MealPreferenceSurvey: undefined;
@@ -82,11 +84,9 @@ function LoggedOutScreen() {
 }
 
 function SurveyRouteScreen({ route, navigation }: NativeStackScreenProps<RootStackParamList, 'Survey'>) {
-  function handleSaved(prefs: Preferences) {
-    if (!prefs.food_survey_completed) {
-      navigation.replace('FoodSurvey');
-      return;
-    }
+  // The Food Preference Survey is no longer part of onboarding
+  // (docs/adr/0027) — it stays reachable from the "Taste quiz" link.
+  function handleSaved() {
     navigation.replace('CraftedMeals');
   }
   return (
@@ -107,6 +107,7 @@ function FoodSurveyRouteScreen({ navigation }: NativeStackScreenProps<RootStackP
 function CraftedMealsRouteScreen({ navigation }: NativeStackScreenProps<RootStackParamList, 'CraftedMeals'>) {
   const [eateries, setEateries] = useState<EateryCrafted[] | null>(null);
   const [perMealTarget, setPerMealTarget] = useState<Totals | null>(null);
+  const [tags, setTags] = useState<{ liked: string[]; disliked: string[] }>({ liked: [], disliked: [] });
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -115,6 +116,9 @@ function CraftedMealsRouteScreen({ navigation }: NativeStackScreenProps<RootStac
       const [data, prefs] = await Promise.all([getCraftedMealsToday(), getPreferences()]);
       setEateries(data);
       if (prefs) {
+        setTags({ liked: prefs.liked_tags, disliked: prefs.disliked_tags });
+        // Fallback only — each eatery's response carries the target its meal
+        // was actually sized to (docs/adr/0027).
         const n = Math.max(prefs.meals_per_day, 1);
         setPerMealTarget({
           calories: prefs.calorie_goal / n,
@@ -195,9 +199,12 @@ function CraftedMealsRouteScreen({ navigation }: NativeStackScreenProps<RootStac
     <CraftedMealsList
       eateries={eateries}
       perMealTarget={perMealTarget}
+      likedTags={tags.liked}
+      dislikedTags={tags.disliked}
       refreshing={refreshing}
       onRefresh={handleRefresh}
       onGoToDiary={() => navigation.navigate('Diary')}
+      onGoToProgress={() => navigation.navigate('Progress')}
       onSelectEatery={handleSelectEatery}
       onLogout={handleLogout}
       onUpdatePreferences={handleUpdatePreferences}
@@ -219,6 +226,28 @@ function DiaryRouteScreen({ navigation }: NativeStackScreenProps<RootStackParamL
   return (
     <DiaryScreen
       onGoToToday={() => navigation.navigate('CraftedMeals')}
+      onGoToProgress={() => navigation.navigate('Progress')}
+      onLogout={handleLogout}
+      onUpdatePreferences={handleUpdatePreferences}
+      onRetakeFoodSurvey={() => navigation.navigate('FoodSurvey')}
+      onRefineMealPreferences={() => navigation.navigate('MealPreferenceSurvey')}
+    />
+  );
+}
+
+function ProgressRouteScreen({ navigation }: NativeStackScreenProps<RootStackParamList, 'Progress'>) {
+  async function handleUpdatePreferences() {
+    const prefs = await getPreferences();
+    navigation.navigate('Survey', { existing: prefs });
+  }
+  async function handleLogout() {
+    await logout();
+    navigation.reset({ index: 0, routes: [{ name: 'LoggedOut' }] });
+  }
+  return (
+    <ProgressScreen
+      onGoToToday={() => navigation.navigate('CraftedMeals')}
+      onGoToDiary={() => navigation.navigate('Diary')}
       onLogout={handleLogout}
       onUpdatePreferences={handleUpdatePreferences}
       onRetakeFoodSurvey={() => navigation.navigate('FoodSurvey')}
@@ -290,10 +319,6 @@ function useBootstrap(): BootState {
           if (!cancelled) setState({ kind: 'ready', initialRoute: 'Survey', surveyExisting: null });
           return;
         }
-        if (!prefs.food_survey_completed) {
-          if (!cancelled) setState({ kind: 'ready', initialRoute: 'FoodSurvey', surveyExisting: null });
-          return;
-        }
         if (!cancelled) setState({ kind: 'ready', initialRoute: 'CraftedMeals', surveyExisting: null });
       } catch (err: any) {
         if (!cancelled) setState({ kind: 'error', message: err.message });
@@ -343,6 +368,7 @@ export default function RootNavigator() {
         <Stack.Screen name="FoodSurvey" component={FoodSurveyRouteScreen} options={pushedHeaderOptions} />
         <Stack.Screen name="CraftedMeals" component={CraftedMealsRouteScreen} />
         <Stack.Screen name="Diary" component={DiaryRouteScreen} />
+        <Stack.Screen name="Progress" component={ProgressRouteScreen} />
         <Stack.Screen name="EateryDetail" component={EateryDetailRouteScreen} options={pushedHeaderOptions} />
         <Stack.Screen name="StationSurvey" component={StationSurveyRouteScreen} options={pushedHeaderOptions} />
         <Stack.Screen

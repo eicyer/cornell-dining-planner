@@ -10,7 +10,7 @@ from app.core.config import settings
 from app.core.csrf import CSRFOriginCheckMiddleware
 from app.core.rate_limit import limiter
 from app.core.security_headers import SecurityHeadersMiddleware
-from app.routers import admin_api, admin_pages, auth, crafted_meals, health, logged_meals, menus, preferences, quick_add
+from app.routers import admin_api, admin_pages, auth, crafted_meals, exercise, health, logged_meals, menus, preferences, quick_add, weight
 
 app = FastAPI(title="Cornell Dining Planner API")
 app.state.limiter = limiter
@@ -41,5 +41,7 @@ app.include_router(preferences.router)
 app.include_router(crafted_meals.router)
 app.include_router(logged_meals.router)
 app.include_router(quick_add.router)
+app.include_router(exercise.router)
+app.include_router(weight.router)
 app.include_router(admin_pages.router)
 app.include_router(admin_api.router)

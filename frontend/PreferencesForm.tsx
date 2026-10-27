@@ -15,7 +15,9 @@ import {
   Sex,
   putPreferences,
   recommendTargets,
+  UnitSystem,
 } from './api';
+import { cmToFeetInches, feetInchesToCm, kgToLb, lbToKg } from './units';
 import Button from './components/Button';
 import Chip from './components/Chip';
 import Disclosure from './components/Disclosure';
@@ -45,6 +47,8 @@ const DEFAULTS: Preferences = {
   disliked_tags: [],
   eating_styles: [],
   food_survey_completed: false,
+  exercise_adds_to_goal: true,
+  unit_system: 'imperial',
 };
 
 const ACTIVITY_LABELS: Record<ActivityLevel, string> = {
@@ -81,31 +85,6 @@ const SECTIONS = ['Daily targets', 'Diet & allergens', 'Eating style', 'Foods yo
 const round = (n: number) => Math.round(n).toLocaleString('en-US');
 const humanize = (s: string) => s.replace(/_/g, ' ');
 
-// height_cm/weight_kg are the only values the API ever sees (backend stays
-// metric — see backend/app/db/models.py) — ft/in/lb are a display-only input
-// mode for a US audience unlikely to know their stats in cm/kg offhand.
-const CM_PER_INCH = 2.54;
-const KG_PER_LB = 0.45359237;
-
-function cmToFeetInches(cm: number): { feet: number; inches: number } {
-  const totalInches = cm / CM_PER_INCH;
-  const feet = Math.floor(totalInches / 12);
-  const inches = Math.round(totalInches - feet * 12);
-  // Rounding inches up to 12 rolls into the next foot (e.g. 5'11.6" -> 6'0").
-  return inches === 12 ? { feet: feet + 1, inches: 0 } : { feet, inches };
-}
-
-function feetInchesToCm(feet: number, inches: number): number {
-  return Math.round((feet * 12 + inches) * CM_PER_INCH);
-}
-
-function kgToLb(kg: number): number {
-  return Math.round(kg / KG_PER_LB);
-}
-
-function lbToKg(lb: number): number {
-  return Math.round((lb * KG_PER_LB) * 10) / 10;
-}
 
 // A bordered 1px square, matching PortionStepper's existing +/- idiom rather
 // than introducing a second stepper look. 32pt + 10 hitSlop = 52pt tap target.
@@ -202,7 +181,7 @@ export default function PreferencesForm({
   // are far more likely to know their height/weight in ft/in/lb than cm/kg.
   // prefs.height_cm/weight_kg stay the single source of truth either way;
   // these three only exist to display/edit that value in ft/in/lb terms.
-  const [unitSystem, setUnitSystem] = useState<'metric' | 'imperial'>('imperial');
+  const unitSystem = prefs.unit_system;
   const [heightFeet, setHeightFeet] = useState<number | null>(() =>
     prefs.height_cm ? cmToFeetInches(prefs.height_cm).feet : null
   );
@@ -214,14 +193,15 @@ export default function PreferencesForm({
   // Switching into imperial re-derives ft/in/lb from whatever's currently in
   // prefs, so a value typed in cm/kg while on the metric tab shows up
   // correctly converted rather than a stale snapshot from mount.
-  function switchUnitSystem(system: 'metric' | 'imperial') {
+  function switchUnitSystem(system: UnitSystem) {
     if (system === 'imperial') {
       const { feet, inches } = prefs.height_cm ? cmToFeetInches(prefs.height_cm) : { feet: null, inches: null };
       setHeightFeet(feet);
       setHeightInches(inches);
       setWeightLb(prefs.weight_kg ? kgToLb(prefs.weight_kg) : null);
     }
-    setUnitSystem(system);
+    // Saved with the rest of the form — Progress shows weights in it too.
+    setPrefs((p) => ({ ...p, unit_system: system }));
   }
 
   function handleHeightFeetChange(feet: number) {
@@ -467,6 +447,10 @@ export default function PreferencesForm({
                 />
               ))}
             </View>
+            {/* docs/adr/0025: logged workouts add to the budget on their own. */}
+            <Text style={styles.fieldCaption}>
+              Logging workouts in the Diary? Pick the level for your days without them, so they aren't counted twice.
+            </Text>
 
             <Text style={styles.label}>Health goal</Text>
             <View style={styles.chipRow}>
@@ -592,6 +576,23 @@ export default function PreferencesForm({
           Split across {mealCount} {mealCount === 1 ? 'meal' : 'meals'}: ≈{round(prefs.calorie_goal / mealCount)} cal ·{' '}
           {round(prefs.protein_goal_g / mealCount)}g protein · {round(prefs.carb_goal_g / mealCount)}g carbs ·{' '}
           {round(prefs.fat_goal_g / mealCount)}g fat per meal.
+        </Text>
+
+        <Text style={styles.label}>Logged exercise</Text>
+        <View style={styles.chipRow}>
+          <Chip
+            label="Adds to my budget"
+            selected={prefs.exercise_adds_to_goal}
+            onPress={() => setPrefs({ ...prefs, exercise_adds_to_goal: true })}
+          />
+          <Chip
+            label="Doesn't change my budget"
+            selected={!prefs.exercise_adds_to_goal}
+            onPress={() => setPrefs({ ...prefs, exercise_adds_to_goal: false })}
+          />
+        </View>
+        <Text style={styles.fieldCaption}>
+          Choose "Doesn't change" if your activity level already includes the workouts you log.
         </Text>
 
         <NextLink index={0} />
