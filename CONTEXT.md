@@ -25,8 +25,12 @@ The mapping from a Menu Item to its calorie/macro density **per 100g** — from 
 _Avoid_: Nutrition lookup, food match, portion (this is a density, not a serving size)
 
 **Crafted Meal**:
-A system-suggested combination of Menu Items from a single eatery/Menu Event, selected to fit a user's calorie/macro/preference targets.
+A system-suggested combination of Menu Items from a single eatery/Menu Event, selected to fit a user's calorie/macro/preference targets. Secondary to the Diary since the tracking pivot: its items are precomputed daily, and once the user has logged anything today its portions are re-sized to the Remaining-Budget Target — see [[0027-crafted-meals-in-a-tracking-first-app]].
 _Avoid_: Suggested meal, recommendation
+
+**Remaining-Budget Target**:
+The per-meal calorie/macro target a Crafted Meal is sized to once anything is logged today: (daily goal + counted exercise − eaten today in other sections) ÷ (this section + later main Meal Sections still empty), clamped to 50–150% of the flat goal ÷ meals_per_day split. Before the first log of the day, the flat split applies. See [[0027-crafted-meals-in-a-tracking-first-app]].
+_Avoid_: Per-meal target (that's the flat split), remaining calories (that's the Diary's day-level figure)
 
 **Plate Role**:
 One of three roles (`protein`, `carb`, `vegetable`) a Menu Item is classified into for Crafted Meal candidate generation, derived from its own nutrition numbers (protein density, calorie density) and name — not its Menu Item category, which is a dining-hall station grouping and not a reliable stand-in for food role (a "Salad" station can list dressing, tofu, and rice side by side). A Crafted Meal candidate draws at most one item per role, sized off that role's benchmark portion range; items that aren't a real plate component (drinks, desserts, condiments) classify to no role and never enter candidate generation. See [[0012-plate-role-portioning]].
@@ -67,6 +71,10 @@ _Avoid_: none
 **Exercise Entry**:
 One logged workout on one Diary day: an activity and minutes, with calories burned estimated server-side as (MET − 1) × weight × hours, or typed by the user when there's no estimate. By default its calories add to that day's budget (Remaining = Goal − Food + Exercise); macro targets never change. See [[0025-exercise-entries-and-net-calories]].
 _Avoid_: Activity (that's Activity Level), workout log
+
+**Weigh-in**:
+One weight a user logged for one day (at most one per day; logging again replaces it), stored in kg. Weigh-ins are history for the Progress screen and the exercise estimate; they never change Recommended Targets on their own — Progress offers to recalculate when the latest weigh-in is ≥1 kg from the weight the targets were computed from. See [[0026-weight-log-and-progress]].
+_Avoid_: Weight (ambiguous with the profile weight on UserPreference), weight goal (there isn't one)
 
 **Health Goal**:
 A user's stated intent for total daily calories — lose weight, maintain weight, or gain weight. Input to Recommended Targets; shifts the calorie target by a fixed, safety-bounded percentage of TDEE and sets the protein-per-kg used in the macro split. Independent of Macro Style and Diet Restriction.

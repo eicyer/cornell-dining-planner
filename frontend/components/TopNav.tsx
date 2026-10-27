@@ -16,7 +16,9 @@ import { colors, interaction, space, type } from '../theme';
 // else. The current section is marked with the system's existing underline-tab
 // idiom (ink text + 2px accent rule) rather than by omitting its own link, so
 // the nav no longer reshuffles as you move between screens.
-export type NavSection = 'today' | 'diary';
+// Progress is a third section until the navigation decision (wayfinder
+// #57) replaces this masthead — see docs/adr/0026.
+export type NavSection = 'today' | 'diary' | 'progress';
 
 function NavLink({
   label,
@@ -63,6 +65,7 @@ export default function TopNav({
   current,
   onGoToToday,
   onGoToDiary,
+  onGoToProgress,
   onUpdatePreferences,
   onRetakeFoodSurvey,
   onRefineMealPreferences,
@@ -71,6 +74,7 @@ export default function TopNav({
   current: NavSection;
   onGoToToday: () => void;
   onGoToDiary: () => void;
+  onGoToProgress: () => void;
   onUpdatePreferences: () => void;
   onRetakeFoodSurvey: () => void;
   onRefineMealPreferences: () => void;
@@ -87,6 +91,7 @@ export default function TopNav({
       <View style={styles.group}>
         <NavLink label="Today" onPress={onGoToToday} current={current === 'today'} />
         <NavLink label="Diary" onPress={onGoToDiary} current={current === 'diary'} />
+        <NavLink label="Progress" onPress={onGoToProgress} current={current === 'progress'} />
       </View>
       <View style={styles.group}>
         <NavLink label="Preferences" onPress={onUpdatePreferences} />

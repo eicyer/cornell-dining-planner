@@ -67,6 +67,7 @@ export const MACRO_STYLES = ['balanced', 'lower_carb', 'keto', 'high_protein'] a
 export type MacroStyle = (typeof MACRO_STYLES)[number];
 
 export type Sex = 'male' | 'female';
+export type UnitSystem = 'imperial' | 'metric';
 export type TargetMode = 'recommended' | 'manual';
 
 export type Preferences = {
@@ -93,6 +94,8 @@ export type Preferences = {
   food_survey_completed: boolean;
   // docs/adr/0025 — whether Exercise Entries add to the day's budget.
   exercise_adds_to_goal: boolean;
+  // docs/adr/0026 — display units only; the API is always metric.
+  unit_system: UnitSystem;
 };
 
 export async function getPreferences(): Promise<Preferences | null> {
@@ -247,6 +250,10 @@ export type EateryCrafted = {
   meal_period: string | null;
   crafted_meal: CraftedMeal | null;
   reason_unavailable: string | null;
+  // What crafted_meal was sized to: the Remaining-Budget Target once
+  // anything is logged today, else goal ÷ meals_per_day (docs/adr/0027).
+  target: Totals | null;
+  sized_to_remaining: boolean;
 };
 
 export async function getCraftedMealsToday(): Promise<EateryCrafted[]> {
@@ -263,6 +270,7 @@ export type NextMeal = {
   meal_period: string;
   crafted_meal: CraftedMeal | null;
   reason_unavailable: string | null;
+  target: Totals | null;
 };
 
 // Up to a few ranked meal options for one eatery — see the eatery-detail
@@ -279,6 +287,9 @@ export type EateryCraftedOptions = {
   // Later meal periods still being served today at this eatery, in serving
   // order — empty once the current pick is the last period of the day.
   next_meals: NextMeal[];
+  // What crafted_meals were sized to (docs/adr/0027).
+  target: Totals | null;
+  sized_to_remaining: boolean;
 };
 
 export async function getCraftedMealsForEatery(eateryId: number): Promise<EateryCraftedOptions> {
@@ -544,4 +555,36 @@ export async function replaceExercise(entryId: number, input: ExerciseInput): Pr
 export async function deleteExercise(entryId: number): Promise<void> {
   const res = await apiFetch(`/exercise/${entryId}`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`DELETE /exercise/${entryId} failed: ${res.status}`);
+}
+
+// One Weigh-in per day (docs/adr/0026). History only — targets change
+// only through recalculateTargets().
+export type WeighIn = { date: string; weight_kg: number };
+
+export async function getWeighIns(days = 90): Promise<WeighIn[]> {
+  const res = await apiFetch(`/weight?days=${days}`);
+  if (!res.ok) throw new Error(`GET /weight failed: ${res.status}`);
+  return res.json();
+}
+
+export async function putWeighIn(date: string, weightKg: number): Promise<WeighIn> {
+  const res = await apiFetch(`/weight/${date}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ weight_kg: weightKg }),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `PUT /weight/${date} failed: ${res.status}`));
+  return res.json();
+}
+
+export async function deleteWeighIn(date: string): Promise<void> {
+  const res = await apiFetch(`/weight/${date}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`DELETE /weight/${date} failed: ${res.status}`);
+}
+
+// Re-runs Recommended Targets with the latest Weigh-in and saves them.
+export async function recalculateTargets(): Promise<Preferences> {
+  const res = await apiFetch('/preferences/recalculate-targets', { method: 'POST' });
+  if (!res.ok) throw new Error(await errorMessage(res, `POST /preferences/recalculate-targets failed: ${res.status}`));
+  return res.json();
 }

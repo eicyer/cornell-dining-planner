@@ -138,6 +138,10 @@ class UserPreference(Base):
     # users whose Activity Level already counts their workouts.
     exercise_adds_to_goal: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
 
+    # "imperial" (lb, ft/in) or "metric" — display only; every stored
+    # measurement stays metric. See docs/adr/0026.
+    unit_system: Mapped[str] = mapped_column(String, default="imperial", server_default="imperial")
+
     user: Mapped["User"] = relationship(back_populates="preferences")
 
 
@@ -391,6 +395,24 @@ class ExerciseEntry(Base):
     minutes: Mapped[int] = mapped_column(Integer)
     calories: Mapped[float] = mapped_column(Float)
     calories_typed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow
+    )
+
+
+class WeightEntry(Base):
+    """One Weigh-in — see docs/adr/0026. History only: it never changes
+    UserPreference.weight_kg (the weight Recommended Targets were computed
+    from) on its own."""
+
+    __tablename__ = "weight_entries"
+    __table_args__ = (UniqueConstraint("user_id", "date"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    date: Mapped[datetime.date] = mapped_column(Date)
+    weight_kg: Mapped[float] = mapped_column(Float)
 
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=datetime.datetime.utcnow

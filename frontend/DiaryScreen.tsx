@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
-  DaySummary,
   ExerciseActivity,
   ExerciseEntry,
   LoggedMeal,
@@ -12,7 +11,6 @@ import {
   getExercise,
   getExerciseActivities,
   getLoggedMeals,
-  getLoggedMealsSummary,
   getPreferences,
   getQuickAdds,
   rateMeal,
@@ -22,54 +20,20 @@ import ExerciseBlock from './components/ExerciseBlock';
 import MealSectionBlock from './components/MealSectionBlock';
 import TopNav from './components/TopNav';
 import WeekStrip from './components/WeekStrip';
-import { longDateLabel, todayString, weekdayLabel } from './dates';
+import { longDateLabel, todayString } from './dates';
 import { light } from './haptics';
 import { colors, space, type } from './theme';
 
-const WEEK_BAR_MAX_HEIGHT = 56;
-
-// Seven independent bars, each comparing its own day's calories to its own
-// goal — a bar-height comparison, not a multi-slice chart, so it doesn't
-// reintroduce the angle/area-comparison judgment Design.md's portion-chart
-// rejection is about. The bar supplements the number (shown under each
-// bar), it doesn't replace it.
-// A day's budget includes its exercise when the user counts it (docs/adr/0025).
-function WeekTrend({ summary }: { summary: DaySummary[] }) {
-  return (
-    <View style={styles.weekBars}>
-      {summary.map((day) => {
-        const budget = day.goal.calories + (day.exercise_adds_to_goal ? day.exercise_calories : 0);
-        const pct = budget > 0 ? day.totals.calories / budget : 0;
-        const clamped = Math.max(0, Math.min(1, pct));
-        const over = budget > 0 && day.totals.calories > budget;
-        return (
-          <View key={day.date} style={styles.weekBarColumn}>
-            <View style={styles.weekBarTrack}>
-              <View
-                style={[
-                  styles.weekBarFill,
-                  over && styles.weekBarFillOver,
-                  { height: Math.max(2, clamped * WEEK_BAR_MAX_HEIGHT) },
-                ]}
-              />
-            </View>
-            <Text style={styles.weekBarValue}>{Math.round(day.totals.calories)}</Text>
-            <Text style={styles.weekBarLabel}>{weekdayLabel(day.date)}</Text>
-          </View>
-        );
-      })}
-    </View>
-  );
-}
-
 export default function DiaryScreen({
   onGoToToday,
+  onGoToProgress,
   onLogout,
   onUpdatePreferences,
   onRetakeFoodSurvey,
   onRefineMealPreferences,
 }: {
   onGoToToday: () => void;
+  onGoToProgress: () => void;
   onLogout: () => void;
   onUpdatePreferences: () => void;
   onRetakeFoodSurvey: () => void;
@@ -81,25 +45,26 @@ export default function DiaryScreen({
   const [quickAdds, setQuickAdds] = useState<QuickAddEntry[]>([]);
   const [exercise, setExercise] = useState<ExerciseEntry[]>([]);
   const [activities, setActivities] = useState<ExerciseActivity[]>([]);
-  const [summary, setSummary] = useState<DaySummary[] | null>(null);
+  // False only until the first load finishes — later day switches show
+  // a spinner inside the sections instead of blanking the screen.
+  const [loaded, setLoaded] = useState(false);
   const [prefs, setPrefs] = useState<Preferences | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   async function load(date: string) {
     try {
-      const [m, q, e, s, p] = await Promise.all([
+      const [m, q, e, p] = await Promise.all([
         getLoggedMeals(date),
         getQuickAdds(date),
         getExercise(date),
-        getLoggedMealsSummary(7),
         getPreferences(),
       ]);
       setMeals(m);
       setQuickAdds(q);
       setExercise(e);
-      setSummary(s);
       setPrefs(p);
+      setLoaded(true);
     } catch (err: any) {
       setError(err.message);
     }
@@ -131,25 +96,12 @@ export default function DiaryScreen({
     setMeals((prev) => (prev ? prev.map((m) => (m.id === meal.id ? updated : m)) : prev));
   }
 
-  // Edits and deletes shift the week trend, which the server computes —
-  // refetch it rather than re-deriving it here. The selected day's own
-  // totals are summed from `meals` below, so they update immediately.
-  async function refreshSummary() {
-    try {
-      setSummary(await getLoggedMealsSummary(7));
-    } catch {
-      // Keep the stale summary; pull-to-refresh will retry.
-    }
-  }
-
   function handleChanged(updated: LoggedMeal) {
     setMeals((prev) => (prev ? prev.map((m) => (m.id === updated.id ? updated : m)) : prev));
-    refreshSummary();
   }
 
   function handleDeleted(mealId: number) {
     setMeals((prev) => (prev ? prev.filter((m) => m.id !== mealId) : prev));
-    refreshSummary();
   }
 
   // Covers both a new entry and an edit (which may have moved it to
@@ -158,24 +110,20 @@ export default function DiaryScreen({
     setQuickAdds((prev) =>
       prev.some((q) => q.id === entry.id) ? prev.map((q) => (q.id === entry.id ? entry : q)) : [...prev, entry]
     );
-    refreshSummary();
   }
 
   function handleQuickAddDeleted(entryId: number) {
     setQuickAdds((prev) => prev.filter((q) => q.id !== entryId));
-    refreshSummary();
   }
 
   function handleExerciseSaved(entry: ExerciseEntry) {
     setExercise((prev) =>
       prev.some((e) => e.id === entry.id) ? prev.map((e) => (e.id === entry.id ? entry : e)) : [...prev, entry]
     );
-    refreshSummary();
   }
 
   function handleExerciseDeleted(entryId: number) {
     setExercise((prev) => prev.filter((e) => e.id !== entryId));
-    refreshSummary();
   }
 
   if (error) {
@@ -186,7 +134,7 @@ export default function DiaryScreen({
     );
   }
 
-  if (!summary) {
+  if (!loaded) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={colors.accent} />
@@ -219,6 +167,7 @@ export default function DiaryScreen({
         current="diary"
         onGoToToday={onGoToToday}
         onGoToDiary={() => setSelectedDate(today)}
+        onGoToProgress={onGoToProgress}
         onUpdatePreferences={onUpdatePreferences}
         onRetakeFoodSurvey={onRetakeFoodSurvey}
         onRefineMealPreferences={onRefineMealPreferences}
@@ -264,42 +213,6 @@ export default function DiaryScreen({
           />
         )}
       </View>
-
-      <View style={styles.weekSection}>
-        <Text style={styles.sectionTitle}>Last 7 days</Text>
-        <WeekTrend summary={summary} />
-      </View>
-
-      {prefs && (prefs.liked_tags.length > 0 || prefs.disliked_tags.length > 0) ? (
-        <View style={styles.tagsSection}>
-          {prefs.liked_tags.length > 0 && (
-            <>
-              <Text style={styles.sectionTitle}>You tend to like</Text>
-              <View style={styles.tagRow}>
-                {prefs.liked_tags.map((tag) => (
-                  <Text key={tag} style={styles.tag}>
-                    {tag.replace(/_/g, ' ')}
-                  </Text>
-                ))}
-              </View>
-            </>
-          )}
-          {prefs.disliked_tags.length > 0 && (
-            <>
-              <Text style={styles.sectionTitle}>You tend to avoid</Text>
-              <View style={styles.tagRow}>
-                {prefs.disliked_tags.map((tag) => (
-                  <Text key={tag} style={styles.tag}>
-                    {tag.replace(/_/g, ' ')}
-                  </Text>
-                ))}
-              </View>
-            </>
-          )}
-        </View>
-      ) : (
-        <View />
-      )}
     </ScrollView>
   );
 }
@@ -328,38 +241,4 @@ const styles = StyleSheet.create({
   kicker: { ...type.kicker, marginBottom: space.xs },
   title: { ...type.display, fontSize: 28, marginBottom: space.lg },
   sectionsLoading: { marginTop: space.xxl },
-  weekSection: { marginTop: space.xxxl },
-  sectionTitle: {
-    ...type.kicker,
-    marginBottom: space.md,
-    marginTop: space.sm,
-    paddingBottom: space.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.hairline,
-  },
-  weekBars: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: space.lg },
-  weekBarColumn: { alignItems: 'center', flex: 1 },
-  weekBarTrack: {
-    width: 12,
-    height: WEEK_BAR_MAX_HEIGHT,
-    justifyContent: 'flex-end',
-    backgroundColor: colors.disabled,
-  },
-  weekBarFill: { width: 12, backgroundColor: colors.ink },
-  weekBarFillOver: { backgroundColor: colors.accent },
-  weekBarValue: { ...type.mono, fontSize: 10, marginTop: space.xs },
-  weekBarLabel: { ...type.caption, marginTop: 2 },
-  tagsSection: { marginTop: space.sm },
-  tagRow: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: space.lg },
-  tag: {
-    ...type.body,
-    fontSize: 13,
-    color: colors.ink,
-    textTransform: 'capitalize',
-    borderBottomWidth: 2,
-    borderBottomColor: colors.accent,
-    paddingVertical: space.xs,
-    marginRight: space.md,
-    marginBottom: space.xs,
-  },
 });
