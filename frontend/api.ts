@@ -63,6 +63,14 @@ export type ActivityLevel = (typeof ACTIVITY_LEVELS)[number];
 export const HEALTH_GOALS = ['lose_weight', 'maintain_weight', 'gain_weight'] as const;
 export type HealthGoal = (typeof HEALTH_GOALS)[number];
 
+// Weekly Pace options per goal, kg/week — mirrors the backend's
+// ALLOWED_WEEKLY_PACES_KG (docs/adr/0031).
+export const WEEKLY_PACES_KG: Record<HealthGoal, number[]> = {
+  lose_weight: [0.25, 0.5],
+  maintain_weight: [],
+  gain_weight: [0.25],
+};
+
 export const MACRO_STYLES = ['balanced', 'lower_carb', 'keto', 'high_protein'] as const;
 export type MacroStyle = (typeof MACRO_STYLES)[number];
 
@@ -85,6 +93,7 @@ export type Preferences = {
   activity_level: ActivityLevel | null;
   health_goal: HealthGoal | null;
   macro_style: MacroStyle | null;
+  weekly_pace_kg: number | null;
   target_mode: TargetMode;
   liked_foods_text: string | null;
   disliked_foods_text: string | null;
@@ -123,6 +132,7 @@ export type RecommendTargetsInput = {
   activity_level: ActivityLevel;
   health_goal: HealthGoal;
   macro_style: MacroStyle;
+  weekly_pace_kg?: number | null;
 };
 
 export type RecommendedTargets = {
@@ -132,6 +142,7 @@ export type RecommendedTargets = {
   protein_goal_g: number;
   carb_goal_g: number;
   fat_goal_g: number;
+  floor_applied: boolean;
 };
 
 export async function recommendTargets(input: RecommendTargetsInput): Promise<RecommendedTargets> {
@@ -450,6 +461,16 @@ export type DaySummary = {
 export async function getLoggedMealsSummary(days = 7): Promise<DaySummary[]> {
   const res = await apiFetch(`/logged-meals/summary?days=${days}`);
   if (!res.ok) throw new Error(`GET /logged-meals/summary failed: ${res.status}`);
+  return res.json();
+}
+
+// Logging Streak (docs/adr/0032): consecutive Logging Days ending today, or
+// yesterday while today has nothing logged yet.
+export type Streak = { days: number; logged_today: boolean };
+
+export async function getStreak(): Promise<Streak> {
+  const res = await apiFetch('/logged-meals/streak');
+  if (!res.ok) throw new Error(`GET /logged-meals/streak failed: ${res.status}`);
   return res.json();
 }
 

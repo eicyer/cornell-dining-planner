@@ -28,9 +28,19 @@ This is genuinely how the app should read: `CraftedMealsList.tsx` renders the ki
 - No purple or indigo. No gradients.
 - No centered three-card hero layout.
 - No "modern and clean" — this is Editorial, specifically.
-- No `borderRadius` above `0` except the two named exceptions below.
+- No `borderRadius` above `0` except the named exception below.
 - No bordered/background "card" boxes for grouping content. Use whitespace and, where a boundary is truly needed, one 1px hairline rule.
 - No Lorem ipsum, no "Feature one / Feature two" placeholder copy. Every string in the UI is either real Cornell dining data or specific, concrete instructional copy (e.g. "e.g. chicken, spicy food, Asian flavors", not "Enter your preference").
+
+### Tracker exceptions (wayfinder #62, `docs/adr/0033`)
+
+The tracking pivot needs a denser, stickier screen than a menu card. These are the only relaxations of the rules above, each with the boundary it must not cross:
+
+1. **Pinned surfaces.** `CalorieSummary` (pinned over the Diary) and the bottom trays (`EateryDetailScreen`'s Log tray, Add Food's "Added … · Undo" tray) may carry an opaque `paper` background so content scrolls under them, with one `hairline` on the edge facing the content. They are never a different fill color, never shadowed, never rounded, never floating or inset from the screen edge. A surface, not a card.
+2. **Ink section rule.** A Meal Section or the Exercise block starts with a 1px `ink` rule under its header. It's the one rule that isn't `hairline`, and it marks a section *start* only, never a row.
+3. **Density.** Diary and Add Food rows use `space.xs`–`space.sm` vertical padding, 14px body and 12px mono, tighter than Crafted Meal cards. Rows still get no box, and every tappable row or control still reaches `touchTarget.min` through `hitSlop`.
+
+Nothing else relaxes. In particular, no rings, no colored macro coding, no badges, no celebration graphics (`docs/adr/0032`).
 
 ## Palette (`theme.ts` → `colors`)
 
@@ -160,18 +170,34 @@ The Diary (`DiaryScreen.tsx`) follows MyFitnessPal's Today layout for the tracki
 
 This replaced the old `ProgressRing` (today's calories as a single ring). A ring doesn't survive being pinned at a usable height, and the formula's Remaining figure answers "how's today going" more directly. The component was removed. Any future ring, per macro or per food, is multi-series and falls back under `foodDensity.ts`'s plain-language rule.
 
+### Tracker components: rows, exercise, weight, Setup, streak
+
+Decided in wayfinder #62 against what the pivot built:
+
+- **Row interaction: tap, never swipe.** A food row's edit affordance is the meal's pencil (`LoggedMealCard`). A Quick Add or Exercise row is itself pressable and opens its inline editor in place, where Delete lives behind a confirm step. No swipe-to-delete: it's invisible on web (our primary platform), it collides with iOS's edge swipe-back, and destructive actions should be visible, not gestural.
+- **Macros: bars, not rings.** Three labeled mini-bars under the calorie bar, distinguished by position and label (see *Macro figures* above). A ring per macro is multi-series data viz and falls under the `foodDensity.ts` lesson.
+- **Exercise on Today** is the last block of the Diary and uses the Meal Section idiom (Fraunces name, mono total, ink rule, "+ Add exercise" accent kicker). Burned calories enter `CalorieSummary` as their own term, not as a negative food row.
+- **Weight is not on Today.** Weigh-ins live on Progress (`docs/adr/0026`); the Diary stays about food, and a daily weight number on the home screen invites the checking behaviour the wellbeing defaults avoid.
+- **Setup** (`SetupScreen`, `docs/adr/0031`) is a step kicker ("STEP 1 OF 2"), a Fraunces title, then the same underline fields and chips as Preferences. The live budget appears under a hairline as one 28px `monoEmphasis` figure, the same treatment as `CalorieSummary`'s Remaining, with macros on one mono line under it. Floor copy is a plain caption, never `accent`: it's information, not an error.
+- **Secondary button** (`Button variant="secondary"`): a 1px `ink` border with `ink` text on `paper`, for the "back out" action next to a primary one (Cancel beside Add to diary, or in the Add Food picker). It's square like every button and is never `accent`, so it can't compete with the primary action.
+- **Add Food portion picker** (`docs/adr/0034`): tapping a food's name opens `PortionStepper` inline under the row, with live mono calories and Cancel / "Add 1½ scoops". The open row drops its hairline, so the row and picker close as one block under a single rule. "+" stays the one-tap add.
+- **Units in the field:** body-stat inputs carry their unit as a mono `inkSecondary` suffix (`5 ft 9 in`, `150 lb`). The units switch is an `accent` kicker link on the Height label row ("Use cm · kg"), not a separate tab row people scroll past (`components/BodyStatsFields.tsx`).
+- **Logging Streak** (`docs/adr/0032`) is a single `caption` line (`inkTertiary`) under the `WeekStrip`, with no accent, flame or badge. On Progress it's a caption under Consistency.
+
 ## Verification checklist
 
 - [ ] No `Inter`/`Roboto`/system-font family ever resolves in `getComputedStyle(...).fontFamily` on any title, body, or numeric element.
 - [ ] No purple/indigo/gradient anywhere; the only saturated color is Cornell Red (plus the exempted `foodColors.ts` palette on `colorDot` swatches).
 - [ ] No `borderRadius` above ~2px anywhere except `colorDot`.
 - [ ] No bordered/background "card" boxes remain around meal rows, the progress section, or chip/tab groups — hairline rules only.
-- [ ] All 5 screens (logged out, survey, crafted meals, eatery detail, diary) render real Cornell dining content, never placeholder copy.
+- [ ] Every screen (logged out, Setup, Preferences, Diary, Add Food, Menus, Eatery Detail, Progress, More, the surveys) renders real Cornell dining content or the user's own data, never placeholder copy.
 - [ ] Gram inputs, preference toggles, and "Log meal" flows still function end-to-end.
 - [ ] No icon ever sits inside a colored/filled chip or circle background.
 - [ ] No icon uses a color outside `ink` / `accent` / `inkSecondary`.
 - [ ] Every `ProgressBar` / `BarTrack` renders a real fetched value — no placeholder/demo percentage left in from development.
 - [ ] The Diary's `CalorieSummary` stays pinned while scrolling on web and native, and nothing scrolling under it shows through.
+- [ ] Pinned surfaces and trays are `paper` with one hairline edge: no shadow, radius, inset, or second fill color.
+- [ ] No swipe gesture is the only way to reach an action.
 
 ## Touch-target audit (Phase 6)
 
