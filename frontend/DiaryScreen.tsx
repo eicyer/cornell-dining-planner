@@ -1,18 +1,22 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   ExerciseActivity,
   ExerciseEntry,
   LoggedMeal,
   MEAL_SECTIONS,
+  MealSection,
   Preferences,
   QuickAddEntry,
+  Streak,
   Totals,
   getExercise,
   getExerciseActivities,
   getLoggedMeals,
   getPreferences,
   getQuickAdds,
+  getStreak,
   rateMeal,
 } from './api';
 import CalorieSummary from './components/CalorieSummary';
@@ -24,7 +28,8 @@ import { longDateLabel, todayString } from './dates';
 import { light } from './haptics';
 import { colors, space, type } from './theme';
 
-export default function DiaryScreen({ onLogFromMenus }: { onLogFromMenus: () => void }) {
+// `onLog` opens Add Food for a section (docs/adr/0030).
+export default function DiaryScreen({ onLog }: { onLog: (section: MealSection) => void }) {
   const today = todayString();
   const [selectedDate, setSelectedDate] = useState(today);
   const [meals, setMeals] = useState<LoggedMeal[] | null>(null);
@@ -35,10 +40,17 @@ export default function DiaryScreen({ onLogFromMenus }: { onLogFromMenus: () => 
   // a spinner inside the sections instead of blanking the screen.
   const [loaded, setLoaded] = useState(false);
   const [prefs, setPrefs] = useState<Preferences | null>(null);
+  const [streak, setStreak] = useState<Streak | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Fire-and-forget: the streak line is decoration, never worth an error.
+  function refreshStreak() {
+    getStreak().then(setStreak, () => {});
+  }
+
   async function load(date: string) {
+    refreshStreak();
     try {
       const [m, q, e, p] = await Promise.all([
         getLoggedMeals(date),
@@ -61,6 +73,20 @@ export default function DiaryScreen({ onLogFromMenus }: { onLogFromMenus: () => 
   useEffect(() => {
     getExerciseActivities().then(setActivities, () => {});
   }, []);
+
+  // Food is added on the pushed Add Food screen, so refetch on return.
+  // Skips the first focus — the selectedDate effect below does that load.
+  // The date is read through a ref so a day switch doesn't re-run this.
+  const focusedOnce = useRef(false);
+  const dateRef = useRef(selectedDate);
+  dateRef.current = selectedDate;
+  useFocusEffect(
+    useCallback(() => {
+      if (focusedOnce.current) load(dateRef.current);
+      focusedOnce.current = true;
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+  );
 
   useEffect(() => {
     setMeals(null);
@@ -88,6 +114,7 @@ export default function DiaryScreen({ onLogFromMenus }: { onLogFromMenus: () => 
 
   function handleDeleted(mealId: number) {
     setMeals((prev) => (prev ? prev.filter((m) => m.id !== mealId) : prev));
+    refreshStreak();
   }
 
   // Covers both a new entry and an edit (which may have moved it to
@@ -96,10 +123,12 @@ export default function DiaryScreen({ onLogFromMenus }: { onLogFromMenus: () => 
     setQuickAdds((prev) =>
       prev.some((q) => q.id === entry.id) ? prev.map((q) => (q.id === entry.id ? entry : q)) : [...prev, entry]
     );
+    refreshStreak();
   }
 
   function handleQuickAddDeleted(entryId: number) {
     setQuickAdds((prev) => prev.filter((q) => q.id !== entryId));
+    refreshStreak();
   }
 
   function handleExerciseSaved(entry: ExerciseEntry) {
@@ -155,6 +184,11 @@ export default function DiaryScreen({ onLogFromMenus }: { onLogFromMenus: () => 
         <Text style={styles.kicker}>{selectedDate === today ? 'Today' : longDateLabel(selectedDate)}</Text>
         <Text style={styles.title}>Diary</Text>
         <WeekStrip selected={selectedDate} today={today} onSelect={setSelectedDate} />
+        {selectedDate === today && streak && streak.days >= 2 && (
+          <Text style={styles.streak}>
+            {streak.days} days in a row{streak.logged_today ? '' : ' — log today to keep it going'}
+          </Text>
+        )}
       </View>
 
       <CalorieSummary totals={dayTotals} goal={goal} exercise={exerciseAddsToGoal ? exerciseCalories : 0} />
@@ -170,7 +204,7 @@ export default function DiaryScreen({ onLogFromMenus }: { onLogFromMenus: () => 
               date={selectedDate}
               meals={meals.filter((m) => m.meal_section === section)}
               quickAdds={quickAdds.filter((q) => q.meal_section === section)}
-              onLog={canLog ? onLogFromMenus : undefined}
+              onLog={canLog ? () => onLog(section) : undefined}
               onRate={handleRate}
               onChanged={handleChanged}
               onDeleted={handleDeleted}
@@ -217,5 +251,7 @@ const styles = StyleSheet.create({
   error: { ...type.body, color: colors.accent, textAlign: 'center' },
   kicker: { ...type.kicker, marginBottom: space.xs },
   title: { ...type.display, fontSize: 28, marginBottom: space.lg },
+  // Quiet on purpose (docs/adr/0032): caption ink, no accent, no badge.
+  streak: { ...type.caption, marginTop: space.sm },
   sectionsLoading: { marginTop: space.xxl },
 });
