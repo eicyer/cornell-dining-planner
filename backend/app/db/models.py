@@ -113,6 +113,9 @@ class UserPreference(Base):
     activity_level: Mapped[ActivityLevel | None] = mapped_column(Enum(ActivityLevel), nullable=True)
     health_goal: Mapped[HealthGoal | None] = mapped_column(Enum(HealthGoal), nullable=True)
     macro_style: Mapped[MacroStyle | None] = mapped_column(Enum(MacroStyle), nullable=True)
+    # kg/week, magnitude only (direction comes from health_goal) — see
+    # docs/adr/0031. Null keeps the older fixed-percentage shift.
+    weekly_pace_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Recorded so re-opening the edit form can default back to whichever mode
     # produced the saved targets, instead of always assuming manual entry.
     target_mode: Mapped[TargetMode] = mapped_column(Enum(TargetMode), default=TargetMode.manual)
