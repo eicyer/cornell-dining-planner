@@ -85,8 +85,16 @@ A content-free record that a user performed one logging action — kind (menu, c
 _Avoid_: Analytics event (suggests a third-party tool), log entry
 
 **Health Goal**:
-A user's stated intent for total daily calories — lose weight, maintain weight, or gain weight. Input to Recommended Targets; shifts the calorie target by a fixed, safety-bounded percentage of TDEE and sets the protein-per-kg used in the macro split. Independent of Macro Style and Diet Restriction.
+A user's stated intent for total daily calories — lose weight, maintain weight, or gain weight. Input to Recommended Targets; shifts the calorie target by the Weekly Pace when one is set, otherwise by a fixed, safety-bounded percentage of TDEE, and sets the protein-per-kg used in the macro split. Independent of Macro Style and Diet Restriction.
 _Avoid_: Goal (too broad), diet (that's Diet Restriction, a different thing)
+
+**Weekly Pace**:
+How fast a user with a lose or gain Health Goal wants their weight to change, in kg per week: 0.25 or 0.5 to lose, 0.25 to gain. Recommended Targets turn it into a daily calorie adjustment (pace × 7700 ÷ 7, capped as a share of TDEE, then floored). Unset means the older fixed-percentage shift. See [[0031-onboarding-and-goal-setting]].
+_Avoid_: Rate, speed
+
+**Setup**:
+The two-step first run for a user with no saved preferences: their goal (body stats, Activity Level, Health Goal, Weekly Pace, leading to Recommended Targets), then optional Hard Constraints, then the Diary. Everything else in Preferences is deferred with defaults. See [[0031-onboarding-and-goal-setting]].
+_Avoid_: Survey (that's the pairwise Soft Preference comparisons), onboarding form
 
 **Macro Style**:
 A user's preference for how calories are split across protein/carb/fat — "Balanced" (the default split) or "Lower carb" (a higher fat share, carbs shrink to fill what's left; protein is unchanged). Input to Recommended Targets only; never filters or influences which foods a Crafted Meal can contain — that's Diet Restriction's job.
