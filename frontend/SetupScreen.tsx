@@ -8,7 +8,6 @@ import {
   Preferences,
   RecommendedTargets,
   Sex,
-  UnitSystem,
   WEEKLY_PACES_KG,
   putPreferences,
   recommendTargets,
@@ -21,11 +20,10 @@ import {
   paceForGoal,
   paceLabel,
 } from './goals';
-import { cmToFeetInches, feetInchesToCm, kgToLb, lbToKg } from './units';
+import BodyStatsFields from './components/BodyStatsFields';
 import Button from './components/Button';
 import Chip from './components/Chip';
 import NumberField from './components/NumberField';
-import Tab from './components/Tab';
 import { colors, interaction, space, type } from './theme';
 
 // First run for a user with no saved preferences (docs/adr/0031): their goal,
@@ -53,9 +51,6 @@ export default function SetupScreen({
 }) {
   const [step, setStep] = useState<1 | 2>(1);
   const [prefs, setPrefs] = useState<Preferences>(DEFAULT_PREFERENCES);
-  const [heightFeet, setHeightFeet] = useState<number | null>(null);
-  const [heightInches, setHeightInches] = useState<number | null>(null);
-  const [weightLb, setWeightLb] = useState<number | null>(null);
   const [result, setResult] = useState<RecommendedTargets | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -88,16 +83,6 @@ export default function SetupScreen({
       cancelled = true;
     };
   }, [ready, prefs.age, prefs.sex, prefs.height_cm, prefs.weight_kg, prefs.activity_level, prefs.health_goal, prefs.weekly_pace_kg]);
-
-  function switchUnitSystem(system: UnitSystem) {
-    if (system === 'imperial') {
-      const { feet, inches } = prefs.height_cm ? cmToFeetInches(prefs.height_cm) : { feet: null, inches: null };
-      setHeightFeet(feet);
-      setHeightInches(inches);
-      setWeightLb(prefs.weight_kg ? kgToLb(prefs.weight_kg) : null);
-    }
-    setPrefs((p) => ({ ...p, unit_system: system }));
-  }
 
   function toggle(list: string[], value: string): string[] {
     return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
@@ -190,63 +175,14 @@ export default function SetupScreen({
       <Text style={styles.title}>Set your daily goal</Text>
       <Text style={styles.subtitle}>A few numbers give you a starting calorie budget. You can adjust it anytime.</Text>
 
-      <Text style={styles.label}>Units</Text>
-      <View style={styles.tabRow}>
-        <Tab label="ft/in · lb" active={unitSystem === 'imperial'} onPress={() => switchUnitSystem('imperial')} />
-        <Tab label="cm · kg" active={unitSystem === 'metric'} onPress={() => switchUnitSystem('metric')} />
-      </View>
-
       <NumberField label="Age" value={prefs.age} caption="13–100" onChange={(v) => setPrefs({ ...prefs, age: v })} />
 
-      {unitSystem === 'imperial' ? (
-        <>
-          <View style={styles.row}>
-            <View style={styles.rowItem}>
-              <NumberField
-                label="Height (ft)"
-                value={heightFeet}
-                onChange={(feet) => {
-                  setHeightFeet(feet);
-                  setPrefs((p) => ({ ...p, height_cm: feetInchesToCm(feet, heightInches ?? 0) }));
-                }}
-              />
-            </View>
-            <View style={styles.rowItem}>
-              <NumberField
-                label="Height (in)"
-                value={heightInches}
-                onChange={(inches) => {
-                  setHeightInches(inches);
-                  setPrefs((p) => ({ ...p, height_cm: feetInchesToCm(heightFeet ?? 0, inches) }));
-                }}
-              />
-            </View>
-          </View>
-          <NumberField
-            label="Weight (lb)"
-            value={weightLb}
-            onChange={(lb) => {
-              setWeightLb(lb);
-              setPrefs((p) => ({ ...p, weight_kg: lbToKg(lb) }));
-            }}
-          />
-        </>
-      ) : (
-        <>
-          <NumberField
-            label="Height (cm)"
-            decimal
-            value={prefs.height_cm}
-            onChange={(v) => setPrefs({ ...prefs, height_cm: v })}
-          />
-          <NumberField
-            label="Weight (kg)"
-            decimal
-            value={prefs.weight_kg}
-            onChange={(v) => setPrefs({ ...prefs, weight_kg: v })}
-          />
-        </>
-      )}
+      <BodyStatsFields
+        heightCm={prefs.height_cm}
+        weightKg={prefs.weight_kg}
+        unitSystem={unitSystem}
+        onChange={(change) => setPrefs((p) => ({ ...p, ...change }))}
+      />
 
       <Text style={styles.label}>Sex</Text>
       <Text style={styles.caption}>Used only for the calorie formula.</Text>
@@ -262,6 +198,7 @@ export default function SetupScreen({
           <Chip
             key={level}
             label={ACTIVITY_LABELS[level]}
+            verbatim
             selected={prefs.activity_level === level}
             onPress={() => setPrefs({ ...prefs, activity_level: level })}
           />
@@ -275,6 +212,7 @@ export default function SetupScreen({
           <Chip
             key={goal}
             label={HEALTH_GOAL_LABELS[goal]}
+            verbatim
             selected={prefs.health_goal === goal}
             onPress={() =>
               setPrefs({ ...prefs, health_goal: goal, weekly_pace_kg: paceForGoal(goal, prefs.weekly_pace_kg) })
@@ -291,6 +229,7 @@ export default function SetupScreen({
               <Chip
                 key={pace}
                 label={paceLabel(pace, unitSystem)}
+                verbatim
                 selected={prefs.weekly_pace_kg === pace}
                 onPress={() => setPrefs({ ...prefs, weekly_pace_kg: pace })}
               />
@@ -341,9 +280,6 @@ const styles = StyleSheet.create({
   subtitle: { ...type.body, color: colors.inkSecondary, marginBottom: space.lg },
   label: { ...type.kicker, marginTop: space.sm, marginBottom: space.sm },
   caption: { ...type.caption, marginBottom: space.md },
-  tabRow: { flexDirection: 'row', gap: space.lg, marginBottom: space.lg },
-  row: { flexDirection: 'row', gap: space.md },
-  rowItem: { flex: 1 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.md, marginBottom: space.md },
   result: { borderTopWidth: 1, borderTopColor: colors.hairline, paddingTop: space.md, marginTop: space.md },
   // The same large-figure treatment as CalorieSummary's Remaining: numbers are mono (Design.md).

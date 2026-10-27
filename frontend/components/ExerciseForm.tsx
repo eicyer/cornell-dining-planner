@@ -108,7 +108,7 @@ export default function ExerciseForm({
         <Button label={saving ? 'Deleting…' : 'Delete'} onPress={confirmDelete} disabled={saving} />
         <View style={styles.footerLinks}>
           <Pressable onPress={() => setMode('edit')} hitSlop={14} disabled={saving} style={({ pressed }) => pressed && styles.pressed}>
-            <Text style={styles.linkText}>Keep it</Text>
+          <Text style={styles.linkText}>Keep it</Text>
           </Pressable>
         </View>
       </View>
@@ -152,17 +152,17 @@ export default function ExerciseForm({
       {!isOther && <Text style={styles.caption}>Leave calories blank and we'll estimate them from your weight.</Text>}
 
       {(validationError || error) && <Text style={styles.error}>{validationError ?? error}</Text>}
-      <Button
-        label={saving ? 'Saving…' : entry ? 'Save changes' : 'Add to diary'}
-        onPress={save}
-        disabled={!canSave}
-        style={styles.saveButton}
-      />
-      <View style={styles.footerLinks}>
-        <Pressable onPress={onCancel} hitSlop={14} disabled={saving} style={({ pressed }) => pressed && styles.pressed}>
-          <Text style={styles.linkText}>Cancel</Text>
-        </Pressable>
-        {entry && (
+      <View style={styles.actions}>
+        <Button variant="secondary" label="Cancel" onPress={onCancel} disabled={saving} style={styles.cancelButton} />
+        <Button
+          label={saving ? 'Saving…' : entry ? 'Save changes' : 'Add to diary'}
+          onPress={save}
+          disabled={!canSave}
+          style={styles.saveButton}
+        />
+      </View>
+      {entry && (
+        <View style={styles.footerLinks}>
           <Pressable
             onPress={() => setMode('confirmDelete')}
             hitSlop={14}
@@ -172,8 +172,8 @@ export default function ExerciseForm({
             <Icon icon={Trash2} size="sm" color="accent" />
             <Text style={[styles.linkText, styles.destructiveText]}>Delete</Text>
           </Pressable>
-        )}
-      </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -236,7 +236,10 @@ const styles = StyleSheet.create({
   },
   caption: { ...type.caption, marginBottom: space.md },
   error: { ...type.body, fontSize: 13, color: colors.accent, marginBottom: space.sm },
-  saveButton: { marginTop: space.xs },
+  // Cancel sits beside the primary action so backing out is as visible as saving.
+  actions: { flexDirection: 'row', gap: space.md, marginTop: space.xs },
+  cancelButton: { flex: 1 },
+  saveButton: { flex: 2 },
   footerLinks: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: space.md },
   linkText: { ...type.kicker, color: colors.inkSecondary },
   deleteLink: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
