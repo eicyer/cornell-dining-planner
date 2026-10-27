@@ -78,7 +78,11 @@ _Avoid_: Weight (ambiguous with the profile weight on UserPreference), weight go
 
 **Logging Day**:
 A calendar day on which a user logged any food (a Logged Meal or a Quick Add Entry). The unit of the pivot's north-star metric: logging days per logging user per week. See [[0028-success-metrics-and-first-party-instrumentation]].
-_Avoid_: Active day (opening the app isn't logging), streak day (streaks aren't decided yet)
+_Avoid_: Active day (opening the app isn't logging)
+
+**Logging Streak**:
+The number of consecutive Logging Days ending today, or ending yesterday when today has nothing logged yet (a streak stays alive until the day is over). Backfilling a missed day repairs it. Shown quietly on the Diary (when 2 or more) and on Progress; no celebrations. See [[0032-streaks-day-completion-and-reminders]].
+_Avoid_: Streak day, chain
 
 **Logging Event**:
 A content-free record that a user performed one logging action — kind (menu, crafted, quick_add, exercise, weigh_in), diary date and time — kept only for aggregate success metrics. Never holds food names, amounts or nutrition. See [[0028-success-metrics-and-first-party-instrumentation]].
