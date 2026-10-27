@@ -346,7 +346,8 @@ const styles = StyleSheet.create({
   rowItem: { flex: 1 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.md, marginBottom: space.md },
   result: { borderTopWidth: 1, borderTopColor: colors.hairline, paddingTop: space.md, marginTop: space.md },
-  headline: { ...type.display },
+  // The same large-figure treatment as CalorieSummary's Remaining: numbers are mono (Design.md).
+  headline: { ...type.monoEmphasis, fontSize: 28, lineHeight: 34 },
   mono: { ...type.mono, marginTop: space.xs, marginBottom: space.sm },
   primary: { marginTop: space.xl },
   links: { flexDirection: 'row', justifyContent: 'space-between' },
