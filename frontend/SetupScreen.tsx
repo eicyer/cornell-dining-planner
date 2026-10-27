@@ -198,6 +198,7 @@ export default function SetupScreen({
           <Chip
             key={level}
             label={ACTIVITY_LABELS[level]}
+            verbatim
             selected={prefs.activity_level === level}
             onPress={() => setPrefs({ ...prefs, activity_level: level })}
           />
@@ -211,6 +212,7 @@ export default function SetupScreen({
           <Chip
             key={goal}
             label={HEALTH_GOAL_LABELS[goal]}
+            verbatim
             selected={prefs.health_goal === goal}
             onPress={() =>
               setPrefs({ ...prefs, health_goal: goal, weekly_pace_kg: paceForGoal(goal, prefs.weekly_pace_kg) })
@@ -227,6 +229,7 @@ export default function SetupScreen({
               <Chip
                 key={pace}
                 label={paceLabel(pace, unitSystem)}
+                verbatim
                 selected={prefs.weekly_pace_kg === pace}
                 onPress={() => setPrefs({ ...prefs, weekly_pace_kg: pace })}
               />
