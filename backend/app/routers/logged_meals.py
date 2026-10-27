@@ -1,4 +1,5 @@
 import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -8,7 +9,9 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_user
 from app.db.models import Eatery, ExerciseEntry, LoggedMeal, MenuEvent, MenuItem, NutritionMatch, QuickAddEntry, User, UserPreference
 from app.db.session import get_db
+from app.services.logging_events import record_event
 from app.services.meal_sections import MealSection, meal_section_for
+from app.services.streaks import current_streak
 
 router = APIRouter()
 
@@ -24,6 +27,9 @@ class LoggedMealIn(BaseModel):
     date: datetime.date | None = None
     items: list[LoggedMealItemIn]
     liked: bool | None = None
+    # How the items were chosen — only counted for success metrics
+    # (docs/adr/0028), never used for nutrition.
+    source: Literal["menu", "crafted"] = "menu"
 
 
 class LoggedMealItemOut(BaseModel):
@@ -206,6 +212,7 @@ def _log_meal(body: LoggedMealIn, user: User, db: Session) -> LoggedMealOut:
         meal.liked = body.liked
     meal.items = [i.model_dump() for i in computed_items]
     meal.totals = _totals_from_items(computed_items)
+    record_event(db, user.id, body.source, date)
     db.commit()
     db.refresh(meal)
 
@@ -262,6 +269,65 @@ def list_logged_meals(
         .all()
     )
     return [_to_out(db, m) for m in meals]
+
+
+RECENTS_DAYS = 30
+
+
+class RecentItem(BaseModel):
+    name: str
+    # The grams most recently logged for this name — what one tap re-adds.
+    grams: float
+    last_date: datetime.date
+
+
+class RecentsOut(BaseModel):
+    items: list[RecentItem]
+    # Meal Section -> the eatery the user last logged that section from,
+    # for defaulting the add-food flow's hall (docs/adr/0030).
+    last_eatery_by_section: dict[str, int]
+
+
+@router.get("/logged-meals/recents", response_model=RecentsOut)
+def logged_meal_recents(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Names and grams only; the client matches them against today's menu
+    and hides anything that isn't on it (docs/adr/0030)."""
+    since = datetime.date.today() - datetime.timedelta(days=RECENTS_DAYS - 1)
+    meals = (
+        db.query(LoggedMeal)
+        .filter(LoggedMeal.user_id == user.id, LoggedMeal.date >= since)
+        .order_by(LoggedMeal.date.desc(), LoggedMeal.created_at.desc())
+        .all()
+    )
+    events = {
+        e.id: e
+        for e in db.query(MenuEvent).filter(MenuEvent.id.in_([m.menu_event_id for m in meals if m.menu_event_id]))
+    }
+
+    items: dict[str, RecentItem] = {}
+    last_eatery_by_section: dict[str, int] = {}
+    # Newest first, so the first time a name or section is seen wins.
+    for meal in meals:
+        event = events.get(meal.menu_event_id)
+        if event is not None:
+            last_eatery_by_section.setdefault(meal_section_for(event.meal_period), event.eatery_id)
+        for item in meal.items:
+            if item["name"] not in items:
+                items[item["name"]] = RecentItem(name=item["name"], grams=item["grams"], last_date=meal.date)
+
+    return RecentsOut(items=list(items.values()), last_eatery_by_section=last_eatery_by_section)
+
+
+class StreakOut(BaseModel):
+    days: int
+    logged_today: bool
+
+
+@router.get("/logged-meals/streak", response_model=StreakOut)
+def logged_meals_streak(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> StreakOut:
+    """The Logging Streak shown on the Diary and Progress (docs/adr/0032)."""
+    streak = current_streak(db, user.id, datetime.date.today())
+    return StreakOut(days=streak.days, logged_today=streak.logged_today)
 
 
 @router.get("/logged-meals/summary", response_model=list[DaySummary])
