@@ -32,8 +32,11 @@ export default function NumberField({
   step,
   min = 0,
   max = Number.MAX_SAFE_INTEGER,
+  suffix,
+  compact,
 }: {
-  label: string;
+  // Optional when a shared label sits above several fields (e.g. ft + in).
+  label?: string;
   value: number | null;
   onChange: (v: number) => void;
   decimal?: boolean;
@@ -44,17 +47,22 @@ export default function NumberField({
   step?: number;
   min?: number;
   max?: number;
+  // A unit set right after the value ("ft", "lb"), so the field says what it
+  // holds without relying on its label.
+  suffix?: string;
+  // Narrow input for short values like feet and inches.
+  compact?: boolean;
 }) {
   const clamp = (n: number) => Math.min(max, Math.max(min, n));
   return (
     <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
+      {label && <Text style={styles.label}>{label}</Text>}
       <View style={styles.numberRow}>
         {step != null && (
           <StepButton label="–" onPress={() => onChange(clamp((value ?? 0) - step))} disabled={(value ?? 0) <= min} />
         )}
         <TextInput
-          style={[styles.numberInput, step != null && styles.numberInputStepped]}
+          style={[styles.numberInput, step != null && styles.numberInputStepped, compact && styles.numberInputCompact]}
           keyboardType={decimal ? 'decimal-pad' : 'numeric'}
           value={value == null ? '' : String(value)}
           onChangeText={(text) => {
@@ -62,6 +70,7 @@ export default function NumberField({
             onChange(Number(cleaned) || 0);
           }}
         />
+        {suffix && <Text style={styles.suffix}>{suffix}</Text>}
         {step != null && (
           <StepButton label="+" onPress={() => onChange(clamp((value ?? 0) + step))} disabled={(value ?? 0) >= max} />
         )}
@@ -90,6 +99,8 @@ const styles = StyleSheet.create({
   // Narrower once flanked by +/- buttons, so the whole control still fits a
   // narrow phone without the row wrapping.
   numberInputStepped: { width: 84, textAlign: 'center' },
+  numberInputCompact: { width: 56, textAlign: 'center' },
+  suffix: { ...type.mono, color: colors.inkSecondary, marginLeft: -space.xs },
   stepButton: {
     width: 32,
     height: 32,
