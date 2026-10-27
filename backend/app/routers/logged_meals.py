@@ -11,6 +11,7 @@ from app.db.models import Eatery, ExerciseEntry, LoggedMeal, MenuEvent, MenuItem
 from app.db.session import get_db
 from app.services.logging_events import record_event
 from app.services.meal_sections import MealSection, meal_section_for
+from app.services.streaks import current_streak
 
 router = APIRouter()
 
@@ -315,6 +316,18 @@ def logged_meal_recents(user: User = Depends(get_current_user), db: Session = De
                 items[item["name"]] = RecentItem(name=item["name"], grams=item["grams"], last_date=meal.date)
 
     return RecentsOut(items=list(items.values()), last_eatery_by_section=last_eatery_by_section)
+
+
+class StreakOut(BaseModel):
+    days: int
+    logged_today: bool
+
+
+@router.get("/logged-meals/streak", response_model=StreakOut)
+def logged_meals_streak(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> StreakOut:
+    """The Logging Streak shown on the Diary and Progress (docs/adr/0032)."""
+    streak = current_streak(db, user.id, datetime.date.today())
+    return StreakOut(days=streak.days, logged_today=streak.logged_today)
 
 
 @router.get("/logged-meals/summary", response_model=list[DaySummary])
