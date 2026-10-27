@@ -8,7 +8,19 @@ import { colors, space, type } from '../theme';
 // growing the chip itself, so tap accuracy improves without bloating the
 // layout. Asymmetric slop (more vertical than horizontal) avoids swallowing
 // taps meant for the next chip over in a wrapped row.
-export default function Chip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+export default function Chip({
+  label,
+  selected,
+  onPress,
+  verbatim,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+  // Skip auto-capitalizing, for labels already written for display
+  // ("Light (1–3x/wk)", "½ lb / week") rather than raw tags like "vegan".
+  verbatim?: boolean;
+}) {
   function handlePress() {
     selection();
     onPress();
@@ -19,7 +31,7 @@ export default function Chip({ label, selected, onPress }: { label: string; sele
       hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
       style={[styles.chip, selected && styles.chipSelected]}
     >
-      <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{label.replace('_', ' ')}</Text>
+      <Text style={[styles.chipText, verbatim && styles.chipTextVerbatim, selected && styles.chipTextSelected]}>{label.replace('_', ' ')}</Text>
     </Pressable>
   );
 }
@@ -34,5 +46,6 @@ const styles = StyleSheet.create({
   },
   chipSelected: { borderBottomColor: colors.accent },
   chipText: { ...type.body, fontSize: 13, color: colors.inkSecondary, textTransform: 'capitalize' },
+  chipTextVerbatim: { textTransform: 'none' },
   chipTextSelected: { color: colors.ink, fontFamily: 'Archivo_600SemiBold' },
 });

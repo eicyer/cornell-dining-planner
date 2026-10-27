@@ -8,6 +8,7 @@ from app.core.deps import get_current_user
 from app.db.models import ExerciseEntry, User
 from app.db.session import get_db
 from app.services.exercise import ACTIVITIES, ACTIVITIES_BY_KEY, OTHER, estimate_calories
+from app.services.logging_events import record_event
 from app.services.weight import current_weight_kg
 
 router = APIRouter()
@@ -110,6 +111,7 @@ def create_exercise(body: ExerciseCreate, user: User = Depends(get_current_user)
     entry = ExerciseEntry(user_id=user.id, date=date)
     _apply(db, user, entry, body)
     db.add(entry)
+    record_event(db, user.id, "exercise", date)
     db.commit()
     db.refresh(entry)
     return _to_out(entry)
