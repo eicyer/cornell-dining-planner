@@ -88,7 +88,11 @@ function LoggedOutScreen() {
   return (
     <View style={styles.center}>
       <Text style={styles.kicker}>Cornell Dining</Text>
-      <Text style={styles.title}>Plan your plate.</Text>
+      {/* docs/adr/0035 */}
+      <Text style={styles.title}>Your dining-hall food diary.</Text>
+      <Text style={styles.pitch}>
+        Log what you eat at Cornell's dining halls in a couple of taps. Every menu item comes with its nutrition.
+      </Text>
       <Button label="Sign in with Google →" onPress={() => Linking.openURL(loginUrl())} fullWidth={false} />
     </View>
   );
@@ -446,7 +450,15 @@ const styles = StyleSheet.create({
   },
   title: {
     ...type.display,
-    marginBottom: 24,
+    marginBottom: space.md,
+    textAlign: 'center',
+  },
+  pitch: {
+    ...type.body,
+    color: colors.inkSecondary,
+    textAlign: 'center',
+    maxWidth: 360,
+    marginBottom: space.xl,
   },
   headerBack: { paddingHorizontal: space.md, paddingVertical: space.sm },
   tabScreen: { flex: 1, backgroundColor: colors.paper },

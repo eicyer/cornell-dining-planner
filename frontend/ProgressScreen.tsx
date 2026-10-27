@@ -5,10 +5,12 @@ import X from 'lucide-react-native/icons/x';
 import {
   DaySummary,
   Preferences,
+  Streak,
   WeighIn,
   deleteWeighIn,
   getLoggedMealsSummary,
   getPreferences,
+  getStreak,
   getWeighIns,
   putWeighIn,
   recalculateTargets,
@@ -36,13 +38,20 @@ export default function ProgressScreen() {
   const [summary, setSummary] = useState<DaySummary[] | null>(null);
   const [weighIns, setWeighIns] = useState<WeighIn[]>([]);
   const [prefs, setPrefs] = useState<Preferences | null>(null);
+  const [streak, setStreak] = useState<Streak | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [s, w, p] = await Promise.all([getLoggedMealsSummary(28), getWeighIns(90), getPreferences()]);
+      const [s, w, p, st] = await Promise.all([
+        getLoggedMealsSummary(28),
+        getWeighIns(90),
+        getPreferences(),
+        getStreak(),
+      ]);
       setSummary(s);
+      setStreak(st);
       setWeighIns(w);
       setPrefs(p);
     } catch (err: any) {
@@ -119,6 +128,11 @@ export default function ProgressScreen() {
         <Text style={styles.figureLine}>
           {loggedDays.length} of {summary.length} days logged
         </Text>
+        {streak && (
+          <Text style={styles.figureCaption}>
+            Current streak: {streak.days} {streak.days === 1 ? 'day' : 'days'}
+          </Text>
+        )}
       </View>
     </ScrollView>
   );

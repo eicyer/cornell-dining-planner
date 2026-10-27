@@ -15,11 +15,10 @@ import {
   Sex,
   putPreferences,
   recommendTargets,
-  UnitSystem,
   WEEKLY_PACES_KG,
 } from './api';
-import { cmToFeetInches, feetInchesToCm, kgToLb, lbToKg } from './units';
 import { ACTIVITY_LABELS, DEFAULT_PREFERENCES, HEALTH_GOAL_LABELS, floorMessage, paceForGoal, paceLabel } from './goals';
+import BodyStatsFields from './components/BodyStatsFields';
 import Button from './components/Button';
 import NumberField from './components/NumberField';
 import Chip from './components/Chip';
@@ -73,45 +72,8 @@ export default function PreferencesForm({
 
   // Defaults to imperial — the intended audience is US college students, who
   // are far more likely to know their height/weight in ft/in/lb than cm/kg.
-  // prefs.height_cm/weight_kg stay the single source of truth either way;
-  // these three only exist to display/edit that value in ft/in/lb terms.
+  // Saved with the rest of the form — Progress shows weights in it too.
   const unitSystem = prefs.unit_system;
-  const [heightFeet, setHeightFeet] = useState<number | null>(() =>
-    prefs.height_cm ? cmToFeetInches(prefs.height_cm).feet : null
-  );
-  const [heightInches, setHeightInches] = useState<number | null>(() =>
-    prefs.height_cm ? cmToFeetInches(prefs.height_cm).inches : null
-  );
-  const [weightLb, setWeightLb] = useState<number | null>(() => (prefs.weight_kg ? kgToLb(prefs.weight_kg) : null));
-
-  // Switching into imperial re-derives ft/in/lb from whatever's currently in
-  // prefs, so a value typed in cm/kg while on the metric tab shows up
-  // correctly converted rather than a stale snapshot from mount.
-  function switchUnitSystem(system: UnitSystem) {
-    if (system === 'imperial') {
-      const { feet, inches } = prefs.height_cm ? cmToFeetInches(prefs.height_cm) : { feet: null, inches: null };
-      setHeightFeet(feet);
-      setHeightInches(inches);
-      setWeightLb(prefs.weight_kg ? kgToLb(prefs.weight_kg) : null);
-    }
-    // Saved with the rest of the form — Progress shows weights in it too.
-    setPrefs((p) => ({ ...p, unit_system: system }));
-  }
-
-  function handleHeightFeetChange(feet: number) {
-    setHeightFeet(feet);
-    setPrefs((p) => ({ ...p, height_cm: feetInchesToCm(feet, heightInches ?? 0) }));
-  }
-
-  function handleHeightInchesChange(inches: number) {
-    setHeightInches(inches);
-    setPrefs((p) => ({ ...p, height_cm: feetInchesToCm(heightFeet ?? 0, inches) }));
-  }
-
-  function handleWeightLbChange(lb: number) {
-    setWeightLb(lb);
-    setPrefs((p) => ({ ...p, weight_kg: lbToKg(lb) }));
-  }
 
   function toggle(list: string[], value: string): string[] {
     return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
@@ -280,48 +242,12 @@ export default function PreferencesForm({
 
             <NumberField label="Age" value={prefs.age} caption="13–100" onChange={(v) => setPrefs({ ...prefs, age: v })} />
 
-            <Text style={styles.label}>Units</Text>
-            <View style={styles.tabRow}>
-              <Tab label="ft/in · lb" active={unitSystem === 'imperial'} onPress={() => switchUnitSystem('imperial')} />
-              <Tab label="cm · kg" active={unitSystem === 'metric'} onPress={() => switchUnitSystem('metric')} />
-            </View>
-
-            {unitSystem === 'imperial' ? (
-              <>
-                <View style={styles.heightRow}>
-                  <View style={styles.heightRowItem}>
-                    <NumberField label="Height (ft)" value={heightFeet} onChange={handleHeightFeetChange} />
-                  </View>
-                  <View style={styles.heightRowItem}>
-                    <NumberField label="Height (in)" value={heightInches} onChange={handleHeightInchesChange} />
-                  </View>
-                </View>
-                <Text style={styles.heightCaption}>3'11" – 7'6"</Text>
-                <NumberField
-                  label="Weight (lb)"
-                  value={weightLb}
-                  caption="66–661 lb"
-                  onChange={handleWeightLbChange}
-                />
-              </>
-            ) : (
-              <>
-                <NumberField
-                  label="Height (cm)"
-                  decimal
-                  value={prefs.height_cm}
-                  caption="120–230 cm"
-                  onChange={(v) => setPrefs({ ...prefs, height_cm: v })}
-                />
-                <NumberField
-                  label="Weight (kg)"
-                  decimal
-                  value={prefs.weight_kg}
-                  caption="30–300 kg"
-                  onChange={(v) => setPrefs({ ...prefs, weight_kg: v })}
-                />
-              </>
-            )}
+            <BodyStatsFields
+              heightCm={prefs.height_cm}
+              weightKg={prefs.weight_kg}
+              unitSystem={unitSystem}
+              onChange={(change) => setPrefs((p) => ({ ...p, ...change }))}
+            />
 
             <Text style={styles.label}>Sex</Text>
             <Text style={styles.fieldCaption}>Used only for the calorie formula above.</Text>
@@ -337,6 +263,7 @@ export default function PreferencesForm({
                 <Chip
                   key={level}
                   label={ACTIVITY_LABELS[level]}
+                  verbatim
                   selected={prefs.activity_level === level}
                   onPress={() => setPrefs({ ...prefs, activity_level: level })}
                 />
@@ -353,6 +280,7 @@ export default function PreferencesForm({
                 <Chip
                   key={goal}
                   label={HEALTH_GOAL_LABELS[goal]}
+                  verbatim
                   selected={prefs.health_goal === goal}
                   onPress={() =>
                     setPrefs({ ...prefs, health_goal: goal, weekly_pace_kg: paceForGoal(goal, prefs.weekly_pace_kg) })
@@ -369,6 +297,7 @@ export default function PreferencesForm({
                     <Chip
                       key={pace}
                       label={paceLabel(pace, unitSystem)}
+                      verbatim
                       selected={prefs.weekly_pace_kg === pace}
                       onPress={() => setPrefs({ ...prefs, weekly_pace_kg: pace })}
                     />
@@ -637,11 +566,6 @@ const styles = StyleSheet.create({
   dailyTargetsLabel: { marginTop: space.xl },
   suggestion: { marginTop: -space.xs, marginBottom: space.lg },
   fieldCaption: { ...type.caption, marginTop: space.xs },
-  // Sits below the ft/in row instead of inside either NumberField (a single
-  // combined range reads better than repeating half of it per field) — needs
-  // its own bottom margin since it's outside NumberField's own `field` wrapper,
-  // which already supplies the gap above via its own marginBottom.
-  heightCaption: { ...type.caption, marginBottom: space.md },
   helperText: { ...type.body, color: colors.inkSecondary, marginBottom: space.md },
   textArea: {
     borderBottomWidth: 1,
@@ -655,8 +579,6 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   tabRow: { flexDirection: 'row', gap: space.lg, marginBottom: space.lg },
-  heightRow: { flexDirection: 'row', gap: space.md },
-  heightRowItem: { flex: 1 },
   recommendPanel: { marginBottom: space.sm },
   calcButton: { marginTop: space.md },
   calcResult: { ...type.mono, marginTop: space.md },
