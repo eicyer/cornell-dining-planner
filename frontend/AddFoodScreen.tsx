@@ -15,8 +15,10 @@ import {
   logMeal,
   updateMealItems,
 } from './api';
+import Button from './components/Button';
 import Chip from './components/Chip';
 import Icon from './components/Icon';
+import PortionStepper from './components/PortionStepper';
 import Tab from './components/Tab';
 import { describePortion, getPortionUnit } from './foodDensity';
 import { light, success } from './haptics';
@@ -50,6 +52,9 @@ export default function AddFoodScreen({ section, onDone }: { section: MealSectio
   // Item name -> how many times it's been added this visit, for the row label.
   const [addedCounts, setAddedCounts] = useState<Record<string, number>>({});
   const [lastAdd, setLastAdd] = useState<LastAdd | null>(null);
+  // The one row whose portion picker is open (docs/adr/0034), keyed by
+  // group too since an item can appear under "Had before" and its station.
+  const [picker, setPicker] = useState<{ key: string; grams: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -97,6 +102,7 @@ export default function AddFoodScreen({ section, onDone }: { section: MealSectio
     setHallId(id);
     setPeriodIndex(0);
     setQuery('');
+    setPicker(null);
   }
 
   async function add(item: MenuItemOut, grams: number) {
@@ -108,6 +114,7 @@ export default function AddFoodScreen({ section, onDone }: { section: MealSectio
       success();
       setAddedCounts((c) => ({ ...c, [item.name]: (c[item.name] ?? 0) + 1 }));
       setLastAdd({ meal, name: item.name, grams, eateryName: hall.name });
+      setPicker(null);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -157,38 +164,82 @@ export default function AddFoodScreen({ section, onDone }: { section: MealSectio
 
   const label = SECTION_LABELS[section];
 
-  function renderRow(item: MenuItemOut, grams: number) {
+  function renderRow(item: MenuItemOut, grams: number, group: string) {
     const count = addedCounts[item.name] ?? 0;
     const calories = item.nutrition ? (item.nutrition.calories_per_100g * grams) / 100 : null;
     const portion = describePortion({ name: item.name, grams });
+    const key = `${group}:${item.name}`;
+    const open = picker?.key === key;
     return (
-      <View key={item.name} style={styles.row}>
-        <View style={styles.rowText}>
-          <Text style={styles.itemName}>{item.name}</Text>
-          <Text style={styles.itemFigures}>
-            {calories == null
-              ? 'No nutrition data'
-              : `${portion ? `${portion} · ` : ''}${Math.round(grams)}g · ${Math.round(calories)} cal`}
-            {count > 0 ? `  ·  Added${count > 1 ? ` ×${count}` : ''}` : ''}
-          </Text>
+      <View key={key}>
+        <View style={[styles.row, open && styles.rowOpen]}>
+          <Pressable
+            onPress={() => {
+              light();
+              setPicker(open ? null : { key, grams });
+            }}
+            disabled={!item.nutrition}
+            accessibilityRole="button"
+            accessibilityLabel={`Choose a portion of ${item.name}`}
+            style={({ pressed }) => [styles.rowText, pressed && styles.pressed]}
+          >
+            <Text style={styles.itemName}>{item.name}</Text>
+            <Text style={styles.itemFigures}>
+              {calories == null
+                ? 'No nutrition data'
+                : `${portion ? `${portion} · ` : ''}${Math.round(grams)}g · ${Math.round(calories)} cal`}
+              {count > 0 ? `  ·  Added${count > 1 ? ` ×${count}` : ''}` : ''}
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => add(item, grams)}
+            disabled={!item.nutrition || busyItem !== null}
+            hitSlop={8}
+            accessibilityLabel={`Add ${item.name}`}
+            style={({ pressed }) => [
+              styles.addButton,
+              (!item.nutrition || busyItem !== null) && styles.addButtonDisabled,
+              pressed && styles.pressed,
+            ]}
+          >
+            {busyItem === item.name && !open ? (
+              <ActivityIndicator size="small" color={colors.accent} />
+            ) : (
+              <Icon icon={Plus} size="md" color={item.nutrition ? 'accent' : 'inkSecondary'} />
+            )}
+          </Pressable>
         </View>
-        <Pressable
-          onPress={() => add(item, grams)}
-          disabled={!item.nutrition || busyItem !== null}
-          hitSlop={8}
-          accessibilityLabel={`Add ${item.name}`}
-          style={({ pressed }) => [
-            styles.addButton,
-            (!item.nutrition || busyItem !== null) && styles.addButtonDisabled,
-            pressed && styles.pressed,
-          ]}
-        >
-          {busyItem === item.name ? (
-            <ActivityIndicator size="small" color={colors.accent} />
-          ) : (
-            <Icon icon={Plus} size="md" color={item.nutrition ? 'accent' : 'inkSecondary'} />
-          )}
-        </Pressable>
+        {open && item.nutrition && renderPicker(item, grams, picker.grams)}
+      </View>
+    );
+  }
+
+  // Inline under the row (docs/adr/0034): step the portion, see the
+  // calories, then add exactly that amount. "+" stays the one-tap path.
+  function renderPicker(item: MenuItemOut, defaultGrams: number, grams: number) {
+    const calories = (item.nutrition!.calories_per_100g * grams) / 100;
+    const portion = describePortion({ name: item.name, grams }).replace(/^≈ /, '');
+    return (
+      <View style={styles.picker}>
+        <View style={styles.pickerRow}>
+          <Text style={styles.pickerCalories}>{Math.round(calories)} cal</Text>
+          <PortionStepper
+            name={item.name}
+            originalGrams={defaultGrams}
+            grams={grams}
+            onChange={(g) => setPicker((p) => (p ? { ...p, grams: g } : p))}
+            disabled={busyItem !== null}
+          />
+        </View>
+        <View style={styles.pickerActions}>
+          <Button variant="secondary" label="Cancel" onPress={() => setPicker(null)} style={styles.pickerCancel} />
+          <Button
+            label={busyItem === item.name ? 'Adding…' : `Add ${portion || `${Math.round(grams)}g`}`}
+            onPress={() => add(item, grams)}
+            disabled={grams <= 0 || busyItem !== null}
+            style={styles.pickerAdd}
+          />
+        </View>
       </View>
     );
   }
@@ -240,7 +291,7 @@ export default function AddFoodScreen({ section, onDone }: { section: MealSectio
             {hadBefore.length > 0 && (
               <View style={styles.group}>
                 <Text style={styles.groupTitle}>Had before</Text>
-                {hadBefore.map((item) => renderRow(item, recentGrams.get(item.name)!))}
+                {hadBefore.map((item) => renderRow(item, recentGrams.get(item.name)!, 'recent'))}
               </View>
             )}
 
@@ -250,7 +301,7 @@ export default function AddFoodScreen({ section, onDone }: { section: MealSectio
               return (
                 <View key={category.category} style={styles.group}>
                   <Text style={styles.groupTitle}>{category.category}</Text>
-                  {items.map((item) => renderRow(item, getPortionUnit(item).gramsPerUnit))}
+                  {items.map((item) => renderRow(item, getPortionUnit(item).gramsPerUnit, category.category))}
                 </View>
               );
             })}
@@ -335,6 +386,14 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.hairline,
   },
   rowText: { flex: 1 },
+  // The open row drops its rule so it and its picker read as one block.
+  rowOpen: { borderBottomWidth: 0 },
+  picker: { gap: space.md, paddingBottom: space.md, borderBottomWidth: 1, borderBottomColor: colors.hairline },
+  pickerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  pickerCalories: { ...type.monoEmphasis },
+  pickerActions: { flexDirection: 'row', gap: space.md },
+  pickerCancel: { flex: 1 },
+  pickerAdd: { flex: 2 },
   itemName: { ...type.body, fontSize: 14 },
   itemFigures: { ...type.mono, fontSize: 12, color: colors.inkTertiary },
   // 28 + hitSlop 8 on each side = 44pt (touchTarget.min).
