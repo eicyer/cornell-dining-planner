@@ -28,6 +28,7 @@ import DiaryScreen from './DiaryScreen';
 import ProgressScreen from './ProgressScreen';
 import EateryDetailScreen from './EateryDetailScreen';
 import AddFoodScreen from './AddFoodScreen';
+import SetupScreen from './SetupScreen';
 import MoreScreen from './MoreScreen';
 import TabBar, { TabName } from './components/TabBar';
 import Button from './components/Button';
@@ -51,6 +52,7 @@ function HeaderBackButton() {
 
 export type RootStackParamList = {
   LoggedOut: undefined;
+  Setup: undefined;
   Survey: { existing: Preferences | null };
   FoodSurvey: undefined;
   // The four tabs (docs/adr/0029).
@@ -110,16 +112,28 @@ function TabScreen({ tab, navigation, children }: { tab: TabName; navigation: an
 }
 
 function SurveyRouteScreen({ route, navigation }: NativeStackScreenProps<RootStackParamList, 'Survey'>) {
-  // First run has nothing to go back to, so it lands on the Diary (home);
-  // editing from More just returns there. The Food Preference Survey is no
-  // longer part of onboarding (docs/adr/0027).
+  // First run (reached from Setup's "own numbers" link) lands on the Diary
+  // (home); editing from More just returns there. The Food Preference Survey
+  // is no longer part of onboarding (docs/adr/0027).
   function handleSaved() {
-    if (navigation.canGoBack()) navigation.goBack();
+    if (route.params.existing && navigation.canGoBack()) navigation.goBack();
     else switchTab(navigation, 'Diary');
   }
   return (
     <ScrollView style={styles.pushedScroll} contentContainerStyle={styles.pushedContent}>
       <PreferencesForm initial={route.params.existing} onSaved={handleSaved} />
+    </ScrollView>
+  );
+}
+
+// First run for a user with no preferences yet (docs/adr/0031).
+function SetupRouteScreen({ navigation }: NativeStackScreenProps<RootStackParamList, 'Setup'>) {
+  return (
+    <ScrollView style={styles.pushedScroll} contentContainerStyle={styles.pushedContent}>
+      <SetupScreen
+        onDone={() => switchTab(navigation, 'Diary')}
+        onManual={() => navigation.navigate('Survey', { existing: null })}
+      />
     </ScrollView>
   );
 }
@@ -322,7 +336,7 @@ function MealPreferenceSurveyRouteScreen({
 type BootState =
   | { kind: 'loading' }
   | { kind: 'error'; message: string }
-  | { kind: 'ready'; initialRoute: 'LoggedOut' | 'Survey' | 'Diary'; surveyExisting: Preferences | null };
+  | { kind: 'ready'; initialRoute: 'LoggedOut' | 'Setup' | 'Diary'; surveyExisting: Preferences | null };
 
 function useBootstrap(): BootState {
   const [state, setState] = useState<BootState>({ kind: 'loading' });
@@ -338,7 +352,7 @@ function useBootstrap(): BootState {
         }
         const prefs: Preferences | null = await getPreferences();
         if (!prefs) {
-          if (!cancelled) setState({ kind: 'ready', initialRoute: 'Survey', surveyExisting: null });
+          if (!cancelled) setState({ kind: 'ready', initialRoute: 'Setup', surveyExisting: null });
           return;
         }
         if (!cancelled) setState({ kind: 'ready', initialRoute: 'Diary', surveyExisting: null });
@@ -381,6 +395,7 @@ export default function RootNavigator() {
         screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.paper } }}
       >
         <Stack.Screen name="LoggedOut" component={LoggedOutScreen} />
+        <Stack.Screen name="Setup" component={SetupRouteScreen} options={pushedHeaderOptions} />
         <Stack.Screen
           name="Survey"
           component={SurveyRouteScreen}

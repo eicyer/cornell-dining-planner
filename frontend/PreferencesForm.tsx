@@ -16,8 +16,10 @@ import {
   putPreferences,
   recommendTargets,
   UnitSystem,
+  WEEKLY_PACES_KG,
 } from './api';
 import { cmToFeetInches, feetInchesToCm, kgToLb, lbToKg } from './units';
+import { ACTIVITY_LABELS, DEFAULT_PREFERENCES, HEALTH_GOAL_LABELS, floorMessage, paceForGoal, paceLabel } from './goals';
 import Button from './components/Button';
 import NumberField from './components/NumberField';
 import Chip from './components/Chip';
@@ -25,46 +27,6 @@ import Disclosure from './components/Disclosure';
 import Tab from './components/Tab';
 import { light } from './haptics';
 import { colors, interaction, radius, space, type } from './theme';
-
-const DEFAULTS: Preferences = {
-  calorie_goal: 2200,
-  protein_goal_g: 150,
-  carb_goal_g: 220,
-  fat_goal_g: 70,
-  meals_per_day: 3,
-  diet_restrictions: [],
-  allergens: [],
-  age: null,
-  sex: null,
-  height_cm: null,
-  weight_kg: null,
-  activity_level: null,
-  health_goal: null,
-  macro_style: null,
-  target_mode: 'manual',
-  liked_foods_text: '',
-  disliked_foods_text: '',
-  liked_tags: [],
-  disliked_tags: [],
-  eating_styles: [],
-  food_survey_completed: false,
-  exercise_adds_to_goal: true,
-  unit_system: 'imperial',
-};
-
-const ACTIVITY_LABELS: Record<ActivityLevel, string> = {
-  sedentary: 'Sedentary',
-  light: 'Light (1–3x/wk)',
-  moderate: 'Moderate (3–5x/wk)',
-  active: 'Active (6–7x/wk)',
-  very_active: 'Very active',
-};
-
-const HEALTH_GOAL_LABELS: Record<HealthGoal, string> = {
-  lose_weight: 'Lose weight',
-  maintain_weight: 'Maintain weight',
-  gain_weight: 'Gain weight',
-};
 
 const MACRO_STYLE_LABELS: Record<MacroStyle, string> = {
   balanced: 'Balanced',
@@ -95,13 +57,13 @@ export default function PreferencesForm({
   onSaved: (prefs: Preferences) => void;
 }) {
   const isUpdate = !!initial;
-  const [prefs, setPrefs] = useState<Preferences>(initial ?? DEFAULTS);
+  const [prefs, setPrefs] = useState<Preferences>(initial ?? DEFAULT_PREFERENCES);
   // First-time setup opens section 1 so there's an obvious place to start;
   // returning to edit opens nothing, so the screen is a scannable summary of
   // every existing answer instead of ~400 lines of fields.
   const [openSection, setOpenSection] = useState<number | null>(isUpdate ? null : 0);
   const [targetTab, setTargetTab] = useState<'recommend' | 'manual'>(
-    (initial ?? DEFAULTS).target_mode === 'recommended' ? 'recommend' : 'manual'
+    (initial ?? DEFAULT_PREFERENCES).target_mode === 'recommended' ? 'recommend' : 'manual'
   );
   const [calculating, setCalculating] = useState(false);
   const [calcError, setCalcError] = useState<string | null>(null);
@@ -178,6 +140,7 @@ export default function PreferencesForm({
         activity_level: prefs.activity_level,
         health_goal: prefs.health_goal,
         macro_style: prefs.macro_style ?? 'balanced',
+        weekly_pace_kg: prefs.weekly_pace_kg,
       });
       setCalcResult(result);
       setPrefs((p) => ({
@@ -391,10 +354,28 @@ export default function PreferencesForm({
                   key={goal}
                   label={HEALTH_GOAL_LABELS[goal]}
                   selected={prefs.health_goal === goal}
-                  onPress={() => setPrefs({ ...prefs, health_goal: goal })}
+                  onPress={() =>
+                    setPrefs({ ...prefs, health_goal: goal, weekly_pace_kg: paceForGoal(goal, prefs.weekly_pace_kg) })
+                  }
                 />
               ))}
             </View>
+
+            {prefs.health_goal && WEEKLY_PACES_KG[prefs.health_goal].length > 0 && (
+              <>
+                <Text style={styles.label}>Weekly pace</Text>
+                <View style={styles.chipRow}>
+                  {WEEKLY_PACES_KG[prefs.health_goal].map((pace) => (
+                    <Chip
+                      key={pace}
+                      label={paceLabel(pace, unitSystem)}
+                      selected={prefs.weekly_pace_kg === pace}
+                      onPress={() => setPrefs({ ...prefs, weekly_pace_kg: pace })}
+                    />
+                  ))}
+                </View>
+              </>
+            )}
 
             <Text style={styles.label}>Macro style</Text>
             <Text style={styles.fieldCaption}>How calories split across protein/carbs/fat. Protein stays the same either way.</Text>
@@ -423,6 +404,9 @@ export default function PreferencesForm({
                 BMR {calcResult.bmr} cal · TDEE {calcResult.tdee} cal/day — targets below are filled in, edit them
                 freely.
               </Text>
+            )}
+            {calcResult && prefs.sex && floorMessage(calcResult, prefs.sex) && (
+              <Text style={styles.fieldCaption}>{floorMessage(calcResult, prefs.sex)}</Text>
             )}
           </View>
         ) : (
@@ -479,7 +463,7 @@ export default function PreferencesForm({
           onChange={(v) => setPrefs({ ...prefs, fat_goal_g: v })}
         />
         <NumberField
-          label="Meals per day"
+          label="Meals per day (for suggested meals)"
           step={1}
           min={1}
           max={8}
@@ -634,7 +618,7 @@ export default function PreferencesForm({
       {error && <Text style={styles.error}>{error}</Text>}
 
       <Button
-        label={saving ? 'Saving…' : isUpdate ? 'Save changes →' : 'Save & see meals →'}
+        label={saving ? 'Saving…' : isUpdate ? 'Save changes →' : 'Save & start your diary →'}
         onPress={handleSave}
         disabled={saving}
         style={styles.saveButton}
