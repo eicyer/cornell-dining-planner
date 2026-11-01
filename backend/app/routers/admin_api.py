@@ -36,6 +36,13 @@ LOW_CONFIDENCE_THRESHOLD = 0.6
 # standard ~10%) because these are dining-hall estimates, not lab values.
 MACRO_CALORIE_MISMATCH_TOLERANCE = 0.15
 
+# Outside these bounds a kcal/100g figure is almost certainly a bad match or
+# estimate (pure fat is ~900), whatever its source — a sharper signal than
+# needs_attention. The low end is a prompt, not a verdict: water, black
+# coffee and diet soda really are under 5.
+IMPLAUSIBLE_KCAL_PER_100G_MIN = 5
+IMPLAUSIBLE_KCAL_PER_100G_MAX = 900
+
 
 class FoodOut(BaseModel):
     item_name: str
@@ -71,6 +78,7 @@ class FoodOut(BaseModel):
     # the listed calorie figure (see MACRO_CALORIE_MISMATCH_TOLERANCE).
     expected_calories_per_100g: float
     calorie_mismatch: bool
+    implausible_calories: bool
     needs_attention: bool
 
 
@@ -145,12 +153,16 @@ def _food_out(nutrition: NutritionMatch, diet: DietTag | None, override: Portion
         nutrition.protein_g_per_100g, nutrition.carbs_g_per_100g, nutrition.fat_g_per_100g
     )
     mismatch = _calorie_mismatch(nutrition.calories_per_100g, expected_calories)
+    implausible = not (
+        IMPLAUSIBLE_KCAL_PER_100G_MIN <= nutrition.calories_per_100g <= IMPLAUSIBLE_KCAL_PER_100G_MAX
+    )
     needs_attention = (
         nutrition.source == NutritionSource.llm_estimate
         or nutrition.confidence_score < LOW_CONFIDENCE_THRESHOLD
         or nutrition.sugar_g_per_100g is None
         or nutrition.fiber_g_per_100g is None
         or mismatch
+        or implausible
     )
     return FoodOut(
         item_name=nutrition.item_name,
@@ -177,6 +189,7 @@ def _food_out(nutrition: NutritionMatch, diet: DietTag | None, override: Portion
         portion_fat_g=round(nutrition.fat_g_per_100g * portion_scale, 1),
         expected_calories_per_100g=round(expected_calories, 1),
         calorie_mismatch=mismatch,
+        implausible_calories=implausible,
         needs_attention=needs_attention,
     )
 
@@ -199,7 +212,8 @@ def list_foods(
     q: str | None = None,
     source: Literal["usda", "llm_estimate"] | None = None,
     needs_attention: bool | None = None,
-    sort: Literal["name", "confidence_asc", "resolved_desc"] = "name",
+    implausible_calories: bool | None = None,
+    sort: Literal["name", "confidence_asc", "resolved_desc", "implausible_first"] = "name",
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
@@ -226,11 +240,15 @@ def list_foods(
 
     if needs_attention is not None:
         foods = [f for f in foods if f.needs_attention == needs_attention]
+    if implausible_calories is not None:
+        foods = [f for f in foods if f.implausible_calories == implausible_calories]
 
     if sort == "confidence_asc":
         foods.sort(key=lambda f: f.confidence_score)
     elif sort == "resolved_desc":
         foods.sort(key=lambda f: f.resolved_at, reverse=True)
+    elif sort == "implausible_first":
+        foods.sort(key=lambda f: (not f.implausible_calories, f.item_name.lower()))
     else:
         foods.sort(key=lambda f: f.item_name.lower())
 

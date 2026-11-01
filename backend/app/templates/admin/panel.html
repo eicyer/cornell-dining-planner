@@ -84,6 +84,7 @@
     font-size: 16px;
   }
   .row-flag { color: var(--accent); font-size: 12px; font-weight: 600; margin-left: 8px; }
+  .row-flag-strong { font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; }
   .row-tags { font-size: 12px; color: var(--ink-tertiary); margin-top: 3px; }
   .row-source {
     font-family: 'Archivo', sans-serif; font-size: 11px; text-transform: uppercase;
@@ -230,8 +231,10 @@
           <option value="name">Sort: Name</option>
           <option value="confidence_asc">Sort: Lowest confidence</option>
           <option value="resolved_desc">Sort: Recently resolved</option>
+          <option value="implausible_first">Sort: Implausible kcal first</option>
         </select>
         <label class="toggle"><input type="checkbox" id="needsAttention" /> Needs attention only</label>
+        <label class="toggle"><input type="checkbox" id="implausibleOnly" /> Implausible kcal only</label>
         <div class="count" id="count"></div>
       </div>
 
@@ -271,7 +274,7 @@ function switchTab(tab) {
 const DIET_TAGS = {{ diet_tags | tojson }};
 const ALLERGENS = {{ allergens | tojson }};
 
-let state = { q: '', source: '', sort: 'name', needsAttention: false, page: 1, pageSize: 50, expanded: null };
+let state = { q: '', source: '', sort: 'name', needsAttention: false, implausibleOnly: false, page: 1, pageSize: 50, expanded: null };
 let latestData = null;
 
 const el = (id) => document.getElementById(id);
@@ -286,6 +289,7 @@ async function fetchFoods() {
   if (state.q) params.set('q', state.q);
   if (state.source) params.set('source', state.source);
   if (state.needsAttention) params.set('needs_attention', 'true');
+  if (state.implausibleOnly) params.set('implausible_calories', 'true');
   params.set('sort', state.sort);
   params.set('page', state.page);
   params.set('page_size', state.pageSize);
@@ -315,6 +319,9 @@ function chipsHtml(vocab, selected, groupId) {
 // (protein/carbs ~4 cal/g, fat ~9 cal/g, same 15% tolerance) so the live
 // recompute below agrees with what the server just rendered.
 const MACRO_CALORIE_MISMATCH_TOLERANCE = 0.15;
+// Mirrors IMPLAUSIBLE_KCAL_PER_100G_MIN/MAX in admin_api.py.
+const IMPLAUSIBLE_KCAL_PER_100G_MIN = 5;
+const IMPLAUSIBLE_KCAL_PER_100G_MAX = 900;
 
 function expectedCalories(protein, carbs, fat) {
   return protein * 4 + carbs * 4 + fat * 9;
@@ -338,10 +345,14 @@ function portionEquivText(cal, protein, carbs, fat, gramsPerUnit, label) {
 function calorieCheckText(cal, protein, carbs, fat) {
   const expected = expectedCalories(protein, carbs, fat);
   const mismatch = calorieMismatch(cal, expected);
-  const text = mismatch
+  const implausible = cal < IMPLAUSIBLE_KCAL_PER_100G_MIN || cal > IMPLAUSIBLE_KCAL_PER_100G_MAX;
+  const macroText = mismatch
     ? `⚠ Macros imply ~${Math.round(expected)} cal/100g from protein/carbs/fat — listed as ${cal}.`
     : `✓ Macros roughly match listed calories (~${Math.round(expected)} cal/100g implied).`;
-  return { text, mismatch };
+  const text = implausible
+    ? `⚠ kcal/100g outside ${IMPLAUSIBLE_KCAL_PER_100G_MIN}–${IMPLAUSIBLE_KCAL_PER_100G_MAX} — check the match. ${macroText}`
+    : macroText;
+  return { text, mismatch: mismatch || implausible };
 }
 
 function editorHtml(f) {
@@ -415,7 +426,7 @@ function render() {
         <div class="row" data-name="${f.item_name.replace(/"/g, '&quot;')}">
           <div class="row-head">
             <div>
-              <span class="row-name">${f.item_name}</span>${f.needs_attention ? '<span class="row-flag">· needs review</span>' : ''}
+              <span class="row-name">${f.item_name}</span>${f.implausible_calories ? '<span class="row-flag row-flag-strong">· implausible kcal</span>' : f.needs_attention ? '<span class="row-flag">· needs review</span>' : ''}
               ${tagsLine ? `<div class="row-tags">${tagsLine}</div>` : ''}
             </div>
             <div class="row-source">${f.source === 'usda' ? 'USDA' : 'LLM'}</div>
@@ -593,6 +604,7 @@ el('search').addEventListener('input', debounce((ev) => {
 el('source').addEventListener('change', (ev) => { state.source = ev.target.value; state.page = 1; fetchFoods(); });
 el('sort').addEventListener('change', (ev) => { state.sort = ev.target.value; state.page = 1; fetchFoods(); });
 el('needsAttention').addEventListener('change', (ev) => { state.needsAttention = ev.target.checked; state.page = 1; fetchFoods(); });
+el('implausibleOnly').addEventListener('change', (ev) => { state.implausibleOnly = ev.target.checked; state.page = 1; fetchFoods(); });
 el('prevPage').addEventListener('click', () => { if (state.page > 1) { state.page -= 1; fetchFoods(); } });
 el('nextPage').addEventListener('click', () => { state.page += 1; fetchFoods(); });
 
