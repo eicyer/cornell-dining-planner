@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TextInputInstance, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import Plus from 'lucide-react-native/icons/plus';
 import Search from 'lucide-react-native/icons/search';
 import {
@@ -48,6 +49,24 @@ export default function AddFoodScreen({ section, onDone }: { section: MealSectio
   const [hallId, setHallId] = useState<number | null>(null);
   const [periodIndex, setPeriodIndex] = useState(0);
   const [query, setQuery] = useState('');
+  const searchRef = useRef<TextInputInstance>(null);
+
+  // Web only: "/" jumps to search, unless focus is already in a text field
+  // or a modifier is held. Bound only while this screen is focused.
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS !== 'web') return;
+      function onKeyDown(e: KeyboardEvent) {
+        if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return;
+        const target = e.target as HTMLElement | null;
+        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+      document.addEventListener('keydown', onKeyDown);
+      return () => document.removeEventListener('keydown', onKeyDown);
+    }, [])
+  );
   const [busyItem, setBusyItem] = useState<string | null>(null);
   // Item name -> how many times it's been added this visit, for the row label.
   const [addedCounts, setAddedCounts] = useState<Record<string, number>>({});
@@ -280,11 +299,17 @@ export default function AddFoodScreen({ section, onDone }: { section: MealSectio
             <View style={styles.searchRow}>
               <Icon icon={Search} size="sm" color="inkSecondary" />
               <TextInput
+                ref={searchRef}
                 style={styles.search}
-                placeholder={hall ? `Search ${hall.name}` : 'Search'}
+                placeholder={`${hall ? `Search ${hall.name}` : 'Search'}${Platform.OS === 'web' ? '  /' : ''}`}
                 placeholderTextColor={colors.inkTertiary}
                 value={query}
                 onChangeText={setQuery}
+                onKeyPress={({ nativeEvent }) => {
+                  if (nativeEvent.key !== 'Escape') return;
+                  setQuery('');
+                  searchRef.current?.blur();
+                }}
                 autoCorrect={false}
               />
             </View>
