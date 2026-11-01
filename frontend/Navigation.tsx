@@ -246,7 +246,10 @@ function MenusRouteScreen({ navigation }: NativeStackScreenProps<RootStackParamL
 function DiaryRouteScreen({ navigation }: NativeStackScreenProps<RootStackParamList, 'Diary'>) {
   return (
     <TabScreen tab="Diary" navigation={navigation}>
-      <DiaryScreen onLog={(section) => navigation.navigate('AddFood', { section })} />
+      <DiaryScreen
+        onLog={(section) => navigation.navigate('AddFood', { section })}
+        onSeeMenus={() => switchTab(navigation, 'Menus')}
+      />
     </TabScreen>
   );
 }
