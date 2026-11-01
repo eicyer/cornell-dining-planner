@@ -26,6 +26,9 @@ logger = logging.getLogger(__name__)
 MAX_RETRIES = 3
 RETRY_BACKOFF_SECONDS = 2.0
 MIN_REQUEST_INTERVAL_SECONDS = 1.0
+# Worth retrying: the throttle's bare 400 above, a real 429, and upstream
+# 5xx. Any other 4xx (bad key, 404) fails the same way every time.
+RETRYABLE_STATUS_CODES = {400, 429}
 
 _rate_limit_lock = asyncio.Lock()
 _last_request_at = 0.0
@@ -157,6 +160,8 @@ async def _get_with_retry(client: httpx.AsyncClient, params: dict) -> httpx.Resp
         last_error = httpx.HTTPStatusError(
             f"USDA search failed ({response.status_code})", request=response.request, response=response
         )
+        if response.status_code < 500 and response.status_code not in RETRYABLE_STATUS_CODES:
+            break
         await asyncio.sleep(RETRY_BACKOFF_SECONDS * (attempt + 1))
 
     assert last_error is not None
