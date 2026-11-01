@@ -67,6 +67,11 @@ function Macro({ label, value, goal }: { label: string; value: number; goal: num
         <Text style={styles.macroGoal}>/{Math.round(goal)}g</Text>
       </Text>
       <BarTrack pct={goal > 0 ? (value / goal) * 100 : 0} tone={over ? 'over' : 'onTrack'} />
+      {goal > 0 && (
+        <Text style={[styles.macroLeft, over && styles.overText]}>
+          {Math.round(Math.abs(goal - value))}g {over ? 'over' : 'left'}
+        </Text>
+      )}
     </View>
   );
 }
@@ -92,4 +97,5 @@ const styles = StyleSheet.create({
   macro: { flex: 1, gap: space.xs },
   macroFigures: { ...type.mono, color: colors.ink },
   macroGoal: { color: colors.inkTertiary },
+  macroLeft: { ...type.mono, fontSize: 12, color: colors.inkSecondary },
 });
