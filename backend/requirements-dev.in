@@ -3,5 +3,5 @@
 # to regenerate requirements-dev.txt. Kept separate from requirements.in so
 # prod installs never pull test tooling.
 -r requirements.in
-pytest==8.3.3
+pytest==8.4.2
 pytest-asyncio==0.24.0
