@@ -48,6 +48,19 @@ client = TestClient(app)
 print(client.get('/menus/today/crafted').json())
 ```
 
+### Daily data refresh (launchd)
+
+`scripts/daily_refresh.sh` runs the three data jobs in order: `scrape_menus` → `enrich_items` → `craft_daily_meals`. Each one reads what the previous one wrote, and all three are idempotent, so re-running is safe (`docs/adr/0002`, `0003`, `0017`). It starts Postgres itself (`docker compose up -d`) and uses `backend/.venv`, so set up the backend first. `enrich_items` needs `ANTHROPIC_API_KEY` and `USDA_API_KEY` in `backend/.env`.
+
+It's scheduled with launchd rather than crontab (`docs/adr/0019`):
+
+```bash
+cp scripts/com.cornell-dining-planner.daily-refresh.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.cornell-dining-planner.daily-refresh.plist
+```
+
+To run it by hand: `scripts/daily_refresh.sh`. Output goes to `logs/daily_refresh_YYYY-MM-DD.log`, one file per day, with a `starting` and a `finished OK` line. A run that stops partway has no `finished OK`, and the traceback above it shows which job failed. For production refreshes, see `docs/adr/0021`.
+
 ### Frontend (Expo / React Native / React Native Web)
 
 Needs Node 22.13+ (Expo SDK 58 requires it — `frontend/.nvmrc` pins this):
