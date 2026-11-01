@@ -48,6 +48,19 @@ client = TestClient(app)
 print(client.get('/menus/today/crafted').json())
 ```
 
+### Daily data refresh (launchd)
+
+`scripts/daily_refresh.sh` runs the three data jobs in order: `scrape_menus` → `enrich_items` → `craft_daily_meals`. Each one reads what the previous one wrote, and all three are idempotent, so re-running is safe (`docs/adr/0002`, `0003`, `0017`). It starts Postgres itself (`docker compose up -d`) and uses `backend/.venv`, so set up the backend first. `enrich_items` needs `ANTHROPIC_API_KEY` and `USDA_API_KEY` in `backend/.env`.
+
+It's scheduled with launchd rather than crontab (`docs/adr/0019`):
+
+```bash
+cp scripts/com.cornell-dining-planner.daily-refresh.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.cornell-dining-planner.daily-refresh.plist
+```
+
+To run it by hand: `scripts/daily_refresh.sh`. Output goes to `logs/daily_refresh_YYYY-MM-DD.log`, one file per day, with a `starting` and a `finished OK` line. A run that stops partway has no `finished OK`, and the traceback above it shows which job failed. For production refreshes, see `docs/adr/0021`.
+
 ### Frontend (Expo / React Native / React Native Web)
 
 Needs Node 22.13+ (Expo SDK 58 requires it — `frontend/.nvmrc` pins this):
@@ -70,6 +83,8 @@ The backend must be running with CORS enabled for `http://localhost:8081` (alrea
 **Phase 2** (preferences + meal crafting): `GET`/`PUT /preferences` (calorie/macro goals, structured diet/allergen Hard Constraints, free-text likes/dislikes parsed into Soft Preference tags by `app/services/preference_parsing.py`). Meal crafting (`app/services/meal_crafting.py`) is a deterministic bounded-least-squares optimizer — it filters items by Hard Constraints, generates a few candidate item combinations per eatery, and solves per-item portion grams (not a fixed assumption, see `docs/adr/0007`) against the user's per-meal macro target. The LLM only touches output afterward (`app/services/meal_polish.py`): picking among candidates using Soft Preferences, naming the meal, writing a one-line rationale — it never adjusts the numbers, per `docs/adr/0003` (scaling caveats for that LLM call noted inline in the ADR). `GET /menus/today/crafted` ties it together per dining hall. Frontend gates on login → preferences survey → crafted meals landing page (`App.tsx`, `PreferencesForm.tsx`, `CraftedMealsList.tsx`). Verified end to end against live scraped/enriched data via `TestClient` (see testing note above) — dairy-allergen exclusion, vegan-only filtering, and preference-aware naming ("Spicy Asian Chicken & Tofu Curry Bowl") all confirmed working. `docs/adr/0008` records two deliberate MVP simplifications: per-meal targets are daily goals ÷ a flat `meals_per_day`, and which meal period to craft for uses a wall-clock heuristic rather than real event timestamps.
 
 **Phase 3** (manual builder + logging): `app/routers/logged_meals.py` — `POST /logged-meals` accepts `{eatery_id, meal_period, items: [{name, grams}]}` and always recomputes nutrition server-side from cached per-100g data (never trusts client-sent numbers, same principle as crafting/enrichment); items must actually be on that eatery's menu for that date/meal_period, enforcing the dining-hall-only scope from `docs/adr/0004`. `PATCH /logged-meals/{id}` sets the thumbs up/down `liked` field (the schema already had it, unused until now). `GET /logged-meals` lists a day's log; `GET /logged-meals/summary` returns daily totals vs. goals over a date range. Frontend: `EateryDetailScreen.tsx` is the manual "MyFitnessPal-style" builder (per-item gram entry, live running totals, tap Log Meal); `CraftedMealsList.tsx` got a one-tap "Log this meal" button per crafted meal; `DiaryScreen.tsx` shows today's logged meals with rating buttons, a progress-bar view of today vs. goals, and the last 7 days. Verified end to end against live data — manual logging, menu-membership validation (rejects items not on that day's menu), rating, and the summary aggregation all confirmed correct.
+
+**Quick Add Entries** (`app/routers/quick_add.py`, `docs/adr/0024`) are for food that isn't on a dining-hall menu. The user types calories, plus an optional name and protein/carbs/fat, into one Meal Section of one Diary day. They differ from Logged Meals in one deliberate way: the numbers are stored **as entered**, within sanity bounds (calories > 0 and ≤ 5000, each macro 0–500 g), rather than recomputed from per-100g data. That makes them the one exception to the server-recomputes-nutrition rule (`docs/adr/0004`), so they live in their own `quick_add_entries` table and never become Logged Meals. They count toward the day's totals and the Logging Streak, but they're never rated and never feed Soft Preferences. Endpoints: `POST /quick-add`, `GET /quick-add?date=`, `PATCH /quick-add/{id}`, `DELETE /quick-add/{id}`.
 
 See `docs/adr/` for the phased plan (`0006-stack-migration-from-nextjs.md` has the most recent context). Not yet deployed anywhere — Railway/Render deployment needs your account, so that's a manual step when you're ready.
 
