@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   ExerciseActivity,
   ExerciseEntry,
@@ -24,12 +24,19 @@ import ExerciseBlock from './components/ExerciseBlock';
 import MealSectionBlock from './components/MealSectionBlock';
 import TopInset from './components/TopInset';
 import WeekStrip from './components/WeekStrip';
-import { longDateLabel, todayString } from './dates';
+import { longDateLabel, todayString, weekdayLabel } from './dates';
 import { light } from './haptics';
-import { colors, space, type } from './theme';
+import { colors, interaction, space, type } from './theme';
 
-// `onLog` opens Add Food for a section (docs/adr/0030).
-export default function DiaryScreen({ onLog }: { onLog: (section: MealSection) => void }) {
+// `onLog` opens Add Food for a section (docs/adr/0030); `onSeeMenus` switches
+// to the Menus tab, offered from an empty today.
+export default function DiaryScreen({
+  onLog,
+  onSeeMenus,
+}: {
+  onLog: (section: MealSection) => void;
+  onSeeMenus: () => void;
+}) {
   const today = todayString();
   const [selectedDate, setSelectedDate] = useState(today);
   const [meals, setMeals] = useState<LoggedMeal[] | null>(null);
@@ -167,6 +174,7 @@ export default function DiaryScreen({ onLog }: { onLog: (section: MealSection) =
   // Menu logging goes through today's live menus only (the add-food flow
   // for other days is wayfinder #58); Quick Add works on any shown day.
   const canLog = selectedDate === today;
+  const dayIsEmpty = meals !== null && meals.length === 0 && quickAdds.length === 0 && exercise.length === 0;
 
   return (
     <ScrollView
@@ -194,6 +202,18 @@ export default function DiaryScreen({ onLog }: { onLog: (section: MealSection) =
       <CalorieSummary totals={dayTotals} goal={goal} exercise={exerciseAddsToGoal ? exerciseCalories : 0} />
 
       <View>
+        {dayIsEmpty && (
+          <View style={styles.emptyDay}>
+            <Text style={styles.emptyDayText}>
+              {canLog ? 'Nothing logged yet today.' : `Nothing logged on ${weekdayLabel(selectedDate, 'long')}.`}
+            </Text>
+            {canLog && (
+              <Pressable onPress={onSeeMenus} hitSlop={8} style={({ pressed }) => pressed && styles.pressed}>
+                <Text style={styles.emptyDayLink}>See what's on at the dining halls →</Text>
+              </Pressable>
+            )}
+          </View>
+        )}
         {!meals ? (
           <ActivityIndicator style={styles.sectionsLoading} color={colors.accent} />
         ) : (
@@ -254,4 +274,9 @@ const styles = StyleSheet.create({
   // Quiet on purpose (docs/adr/0032): caption ink, no accent, no badge.
   streak: { ...type.caption, marginTop: space.sm },
   sectionsLoading: { marginTop: space.xxl },
+  // Same voice as a Meal Section's "Nothing logged." — type only, no art.
+  emptyDay: { paddingTop: space.lg, gap: space.xs },
+  emptyDayText: { ...type.editorialItalic, color: colors.inkTertiary },
+  emptyDayLink: { ...type.kicker, color: colors.accent },
+  pressed: { opacity: interaction.pressedOpacity },
 });

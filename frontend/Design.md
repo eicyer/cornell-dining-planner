@@ -198,6 +198,7 @@ Decided in wayfinder #62 against what the pivot built:
 - [ ] The Diary's `CalorieSummary` stays pinned while scrolling on web and native, and nothing scrolling under it shows through.
 - [ ] Pinned surfaces and trays are `paper` with one hairline edge: no shadow, radius, inset, or second fill color.
 - [ ] No swipe gesture is the only way to reach an action.
+- [ ] Empty states are type only (an `editorialItalic` line, at most one text link): no illustration, image, icon, card, or accent fill.
 
 ## Touch-target audit (Phase 6)
 
