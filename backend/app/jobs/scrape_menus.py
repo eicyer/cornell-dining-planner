@@ -84,13 +84,17 @@ def upsert_menu_event(
 def replace_menu_items(db: Session, menu_event: MenuEvent, categories: list[dict]) -> int:
     db.query(MenuItem).filter(MenuItem.menu_event_id == menu_event.id).delete()
 
+    # The feed sometimes repeats a dish within one station. The same dish
+    # under two different stations is kept: students look for it at each.
+    seen: set[tuple[str, str]] = set()
     count = 0
     for category in categories:
         category_name = category.get("category", "").strip()
         for item in category.get("items", []):
             name = item.get("item", "").strip()
-            if not name:
+            if not name or (category_name, name) in seen:
                 continue
+            seen.add((category_name, name))
             db.add(
                 MenuItem(
                     menu_event=menu_event,
