@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.clock import ithaca_today
 from app.db.models import DietTag, Eatery, MenuEvent, MenuItem, NutritionMatch, PortionOverride
 from app.db.session import get_db
-from app.services.meal_sections import MealSection, meal_section_for
+from app.services.meal_sections import MealSection, meal_period_sort_key, meal_section_for
 
 router = APIRouter()
 
@@ -69,11 +69,9 @@ def menus_today(db: Session = Depends(get_db)) -> list[EateryOut]:
 
     out: list[EateryOut] = []
     for eatery in eateries:
-        menu_events = (
-            db.query(MenuEvent)
-            .filter(MenuEvent.eatery_id == eatery.id, MenuEvent.date == today)
-            .order_by(MenuEvent.meal_period)
-            .all()
+        menu_events = sorted(
+            db.query(MenuEvent).filter(MenuEvent.eatery_id == eatery.id, MenuEvent.date == today).all(),
+            key=lambda e: meal_period_sort_key(e.meal_period),
         )
 
         event_outs: list[MenuEventOut] = []
