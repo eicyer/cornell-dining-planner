@@ -76,6 +76,10 @@ _Avoid_: Activity (that's Activity Level), workout log
 One weight a user logged for one day (at most one per day; logging again replaces it), stored in kg. Weigh-ins are history for the Progress screen and the exercise estimate; they never change Recommended Targets on their own — Progress offers to recalculate when the latest weigh-in is ≥1 kg from the weight the targets were computed from. See [[0026-weight-log-and-progress]].
 _Avoid_: Weight (ambiguous with the profile weight on UserPreference), weight goal (there isn't one)
 
+**Weight Trend**:
+For each Weigh-in, the mean of all Weigh-ins in the 7 calendar days ending on its date: a smoothed line on the Progress chart, shown once at least two points each average two or more Weigh-ins. Descriptive only. It's never projected forward and never feeds Recommended Targets, the Recalculate prompt, the 30-day change or the exercise estimate, all of which use raw Weigh-ins. See [[0026-weight-log-and-progress]].
+_Avoid_: Goal line, projection
+
 **Logging Day**:
 A calendar day on which a user logged any food (a Logged Meal or a Quick Add Entry). The unit of the pivot's north-star metric: logging days per logging user per week. See [[0028-success-metrics-and-first-party-instrumentation]].
 _Avoid_: Active day (opening the app isn't logging)
