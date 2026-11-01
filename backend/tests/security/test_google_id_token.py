@@ -9,7 +9,13 @@ import time
 
 import pytest
 from joserfc import jwt
-from joserfc.errors import JoseError
+from joserfc.errors import (
+    BadSignatureError,
+    ExpiredTokenError,
+    InvalidClaimError,
+    JoseError,
+    MissingClaimError,
+)
 from joserfc.jwk import RSAKey
 
 from app.routers.auth import oauth
@@ -62,15 +68,23 @@ def test_valid_id_token_yields_userinfo():
 
 
 @pytest.mark.parametrize(
-    "id_token, nonce",
+    "id_token, nonce, error",
     [
-        pytest.param(_id_token(key=OTHER_KEY), NONCE, id="bad-signature"),
-        pytest.param(_id_token(aud="someone-elses-client"), NONCE, id="wrong-audience"),
-        pytest.param(_id_token(iss="https://evil.example"), NONCE, id="wrong-issuer"),
-        pytest.param(_id_token(exp=int(time.time()) - 3600), NONCE, id="expired"),
-        pytest.param(_id_token(), "a-different-nonce", id="wrong-nonce"),
+        pytest.param(_id_token(key=OTHER_KEY), NONCE, BadSignatureError, id="bad-signature"),
+        # Rejected because a foreign aud without azp fails azp's presence
+        # check — aud itself isn't pinned yet (see the xfail below).
+        pytest.param(_id_token(aud="someone-elses-client"), NONCE, MissingClaimError, id="foreign-aud-without-azp"),
+        pytest.param(_id_token(iss="https://evil.example"), NONCE, InvalidClaimError, id="wrong-issuer"),
+        pytest.param(_id_token(exp=int(time.time()) - 3600), NONCE, ExpiredTokenError, id="expired"),
+        pytest.param(_id_token(), "a-different-nonce", InvalidClaimError, id="wrong-nonce"),
     ],
 )
-def test_untrustworthy_id_token_is_rejected(id_token, nonce):
-    with pytest.raises(JoseError):
+def test_untrustworthy_id_token_is_rejected(id_token, nonce, error):
+    with pytest.raises(error):
         _parse(id_token, nonce)
+
+
+@pytest.mark.xfail(strict=True, reason="aud isn't pinned to our client_id when azp matches — issue #217")
+def test_foreign_aud_with_our_azp_is_rejected():
+    with pytest.raises(JoseError):
+        _parse(_id_token(aud="someone-elses-client", azp=CLIENT_ID))
