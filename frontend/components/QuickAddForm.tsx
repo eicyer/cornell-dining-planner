@@ -59,7 +59,9 @@ export default function QuickAddForm({
   const [error, setError] = useState<string | null>(null);
 
   const caloriesValue = Number(calories);
-  const macros = [protein, carbs, fat].map((m) => Number(m || 0));
+  // `|| 0` after Number(), not before: a lone "." is NaN, which would
+  // serialize as null and fail the API's float validation.
+  const macros = [protein, carbs, fat].map((m) => Number(m) || 0);
   const validationError =
     !calories || caloriesValue <= 0
       ? null // nothing to complain about yet; the button just stays disabled
