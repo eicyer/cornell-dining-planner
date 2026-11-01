@@ -95,7 +95,8 @@ export default function AddFoodScreen({ section, onDone }: { section: MealSectio
   const needle = query.trim().toLowerCase();
   const matches = (item: MenuItemOut) => !needle || item.name.toLowerCase().includes(needle);
   const allItems = event ? event.categories.flatMap((c) => c.items) : [];
-  const hadBefore = allItems.filter((i) => recentGrams.has(i.name) && matches(i));
+  // One row per name: a dish listed at two stations would otherwise show twice.
+  const hadBefore = [...new Map(allItems.filter((i) => recentGrams.has(i.name) && matches(i)).map((i) => [i.name, i])).values()];
 
   function selectHall(id: number) {
     light();
