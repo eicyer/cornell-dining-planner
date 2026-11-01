@@ -48,10 +48,10 @@ export default function FoodSurveyScreen({
   const [round, setRound] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Responses so far, in a ref rather than state: a second tap that lands
-  // before the re-render would otherwise answer the same pair again from
-  // stale state, double-scoring its tags (and, on the last round,
-  // submitting twice).
+  // Responses so far, in a ref so a second tap that lands before the
+  // re-render can see the first one. That tap is ignored: it was aimed at
+  // the pair on screen, already answered — the next pair hasn't been shown.
+  // Without this, the last round's double tap submitted twice.
   const answered = useRef<FoodSurveyResponse[]>([]);
 
   useEffect(() => {
@@ -80,7 +80,7 @@ export default function FoodSurveyScreen({
 
   function choose(choice: FoodSurveyChoice) {
     const current = answered.current.length;
-    if (!pairs || current >= pairs.length) return;
+    if (!pairs || current !== round) return;
     selection();
     const next = [...answered.current, { pair_id: pairs[current].id, choice }];
     answered.current = next;
