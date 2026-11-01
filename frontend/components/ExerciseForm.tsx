@@ -107,7 +107,7 @@ export default function ExerciseForm({
         {error && <Text style={styles.error}>{error}</Text>}
         <Button label={saving ? 'Deleting…' : 'Delete'} onPress={confirmDelete} disabled={saving} />
         <View style={styles.footerLinks}>
-          <Pressable onPress={() => setMode('edit')} hitSlop={14} disabled={saving} style={({ pressed }) => pressed && styles.pressed}>
+          <Pressable accessibilityRole="button" onPress={() => setMode('edit')} hitSlop={14} disabled={saving} style={({ pressed }) => pressed && styles.pressed}>
           <Text style={styles.linkText}>Keep it</Text>
           </Pressable>
         </View>
@@ -164,6 +164,7 @@ export default function ExerciseForm({
       {entry && (
         <View style={styles.footerLinks}>
           <Pressable
+            accessibilityRole="button"
             onPress={() => setMode('confirmDelete')}
             hitSlop={14}
             disabled={saving}

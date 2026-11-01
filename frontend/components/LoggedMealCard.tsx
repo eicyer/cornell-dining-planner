@@ -103,13 +103,13 @@ export default function LoggedMealCard({
             {/* iconSize.sm (16px) + hitSlop 14 on each edge = 44pt tap
                 target (touchTarget.min) — the glyph itself stays small,
                 only the invisible tap area grows. See Phase 6 audit. */}
-            <Pressable onPress={() => onRate(true)} hitSlop={14} accessibilityLabel="Liked it">
+            <Pressable accessibilityRole="button" onPress={() => onRate(true)} hitSlop={14} accessibilityLabel="Liked it" accessibilityState={{ selected: meal.liked === true }}>
               <Icon icon={ThumbsUp} size="sm" color={meal.liked === true ? 'accent' : 'inkSecondary'} />
             </Pressable>
-            <Pressable onPress={() => onRate(false)} hitSlop={14} accessibilityLabel="Didn't like it">
+            <Pressable accessibilityRole="button" onPress={() => onRate(false)} hitSlop={14} accessibilityLabel="Didn't like it" accessibilityState={{ selected: meal.liked === false }}>
               <Icon icon={ThumbsDown} size="sm" color={meal.liked === false ? 'accent' : 'inkSecondary'} />
             </Pressable>
-            <Pressable onPress={startEdit} hitSlop={14} accessibilityLabel="Edit meal">
+            <Pressable accessibilityRole="button" onPress={startEdit} hitSlop={14} accessibilityLabel="Edit meal">
               <Icon icon={Pencil} size="sm" color="inkSecondary" />
             </Pressable>
           </View>
@@ -123,6 +123,7 @@ export default function LoggedMealCard({
             .map((item) => (
               <View key={item.name} style={styles.editRow}>
                 <Pressable
+                  accessibilityRole="button"
                   onPress={() => removeItem(item.name)}
                   hitSlop={14}
                   accessibilityLabel={`Remove ${item.name}`}
@@ -155,10 +156,11 @@ export default function LoggedMealCard({
             style={styles.saveButton}
           />
           <View style={styles.footerLinks}>
-            <Pressable onPress={cancel} hitSlop={14} disabled={saving} style={({ pressed }) => pressed && styles.pressed}>
+            <Pressable accessibilityRole="button" onPress={cancel} hitSlop={14} disabled={saving} style={({ pressed }) => pressed && styles.pressed}>
               <Text style={styles.linkText}>Cancel</Text>
             </Pressable>
             <Pressable
+              accessibilityRole="button"
               onPress={() => setMode('confirmDelete')}
               hitSlop={14}
               disabled={saving}
@@ -196,7 +198,7 @@ export default function LoggedMealCard({
           {error && <Text style={styles.error}>{error}</Text>}
           <Button label={saving ? 'Deleting…' : 'Delete meal'} onPress={confirmDelete} disabled={saving} />
           <View style={styles.footerLinks}>
-            <Pressable onPress={startEdit} hitSlop={14} disabled={saving} style={({ pressed }) => pressed && styles.pressed}>
+            <Pressable accessibilityRole="button" onPress={startEdit} hitSlop={14} disabled={saving} style={({ pressed }) => pressed && styles.pressed}>
               <Text style={styles.linkText}>Keep it</Text>
             </Pressable>
           </View>
