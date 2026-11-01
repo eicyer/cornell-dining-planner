@@ -182,6 +182,7 @@ Decided in wayfinder #62 against what the pivot built:
 - **Secondary button** (`Button variant="secondary"`): a 1px `ink` border with `ink` text on `paper`, for the "back out" action next to a primary one (Cancel beside Add to diary, or in the Add Food picker). It's square like every button and is never `accent`, so it can't compete with the primary action.
 - **Add Food portion picker** (`docs/adr/0034`): tapping a food's name opens `PortionStepper` inline under the row, with live mono calories and Cancel / "Add 1½ scoops". The open row drops its hairline, so the row and picker close as one block under a single rule. "+" stays the one-tap add.
 - **Units in the field:** body-stat inputs carry their unit as a mono `inkSecondary` suffix (`5 ft 9 in`, `150 lb`). The units switch is an `accent` kicker link on the Height label row ("Use cm · kg"), not a separate tab row people scroll past (`components/BodyStatsFields.tsx`).
+- **Estimated nutrition** is marked with a plain ` · estimated` suffix on the item's caption wherever a menu item is listed with calories (Eatery detail, Add Food) when its Nutrition Match came from an LLM estimate rather than USDA (`docs/adr/0001`). It's a caption, never a badge or a color, and it never filters or reorders anything.
 - **Logging Streak** (`docs/adr/0032`) is a single `caption` line (`inkTertiary`) under the `WeekStrip`, with no accent, flame or badge. On Progress it's a caption under Consistency.
 
 ## Verification checklist
