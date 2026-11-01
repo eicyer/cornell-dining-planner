@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   FoodSurveyChoice,
@@ -46,9 +46,13 @@ export default function FoodSurveyScreen({
 }) {
   const [pairs, setPairs] = useState<FoodSurveyPair[] | null>(null);
   const [round, setRound] = useState(0);
-  const [responses, setResponses] = useState<FoodSurveyResponse[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Responses so far, in a ref rather than state: a second tap that lands
+  // before the re-render would otherwise answer the same pair again from
+  // stale state, double-scoring its tags (and, on the last round,
+  // submitting twice).
+  const answered = useRef<FoodSurveyResponse[]>([]);
 
   useEffect(() => {
     fetchPairs()
@@ -75,12 +79,13 @@ export default function FoodSurveyScreen({
   }
 
   function choose(choice: FoodSurveyChoice) {
-    if (!pairs) return;
+    const current = answered.current.length;
+    if (!pairs || current >= pairs.length) return;
     selection();
-    const next = [...responses, { pair_id: pairs[round].id, choice }];
-    setResponses(next);
-    if (round + 1 < pairs.length) {
-      setRound(round + 1);
+    const next = [...answered.current, { pair_id: pairs[current].id, choice }];
+    answered.current = next;
+    if (current + 1 < pairs.length) {
+      setRound(current + 1);
     } else {
       finish(next);
     }
