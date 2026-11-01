@@ -189,6 +189,7 @@ export default function AddFoodScreen({ section, onDone }: { section: MealSectio
               {calories == null
                 ? 'No nutrition data'
                 : `${portion ? `${portion} · ` : ''}${Math.round(grams)}g · ${Math.round(calories)} cal`}
+              {item.nutrition?.source === 'llm_estimate' ? ' · estimated' : ''}
               {count > 0 ? `  ·  Added${count > 1 ? ` ×${count}` : ''}` : ''}
             </Text>
           </Pressable>

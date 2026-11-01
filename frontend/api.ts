@@ -321,7 +321,7 @@ export type MenuNutrition = {
   carbs_g_per_100g: number;
   fat_g_per_100g: number;
   confidence: number;
-  source: string;
+  source: 'usda' | 'llm_estimate';
 };
 
 export type MenuItemOut = {
