@@ -315,7 +315,8 @@ export default function CraftedMealCard({
                 </View>
                 <View style={styles.itemFooter}>
                   <Text style={styles.itemCaption}>
-                    {Math.round(item.grams)}g{portion ? ` · ${portion}` : ''} · {Math.round(item.calories)} cal
+                    {Math.round(item.grams)}g{portion ? ` · ${portion}` : ''} · {Math.round(item.calories)} cal ·{' '}
+                    {Math.round(item.protein_g)}g protein
                   </Text>
                   {confirmingThis ? (
                     <View style={styles.confirmLinks}>
