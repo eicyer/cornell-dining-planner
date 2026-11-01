@@ -25,6 +25,20 @@ _SECTION_BY_PERIOD: dict[str, MealSection] = {
 }
 
 
+# Chronological order of the feed's meal periods. Sorting the strings
+# alphabetically would put Dinner before Late Lunch and Lunch.
+_PERIOD_ORDER = ["breakfast", "brunch", "lunch", "late lunch", "dinner", "late night"]
+
+
+def meal_period_sort_key(meal_period: str) -> tuple[int, str]:
+    """Unknown periods sort after every known one, alphabetically."""
+    normalized = meal_period.strip().lower()
+    try:
+        return (_PERIOD_ORDER.index(normalized), normalized)
+    except ValueError:
+        return (len(_PERIOD_ORDER), normalized)
+
+
 def meal_section_for(meal_period: str) -> MealSection:
     # A period the feed introduces later falls into Snacks rather than
     # disappearing from the Diary — add it to the table above when it shows up.

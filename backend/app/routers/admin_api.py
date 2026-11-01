@@ -21,6 +21,7 @@ from app.core.rate_limit import limiter
 from app.db.models import CommonFood, DietTag, NutritionMatch, NutritionSource, PortionOverride, User
 from app.db.session import get_db
 from app.services.llm_enrichment import ALLERGENS, DIET_TAGS
+from app.services.metrics import build_report
 from app.services.portion_display import UNIT_LABELS, get_heuristic_portion_display, get_portion_display
 
 router = APIRouter(prefix="/admin/api", tags=["admin"])
@@ -426,3 +427,16 @@ def update_common_food(
     db.commit()
     db.refresh(food)
     return _common_food_out(food)
+
+
+# --- Success metrics — see docs/adr/0028 ----------------------------------
+
+
+@router.get("/metrics")
+def get_metrics(
+    weeks: int = Query(default=8, ge=1, le=52),
+    db: Session = Depends(get_db),
+    _admin: User = Depends(get_current_admin),
+) -> dict:
+    """Aggregates only (no per-user rows) — the pivot's release check."""
+    return build_report(db, weeks=weeks).to_dict()

@@ -10,7 +10,7 @@ import datetime
 import pytest
 
 from app.core.deps import get_current_user
-from app.db.models import CraftedMealsCache, LoggedMeal, Sex, TargetMode, User, UserPreference
+from app.db.models import CraftedMealsCache, ExerciseEntry, LoggedMeal, LoggingEvent, QuickAddEntry, Sex, TargetMode, User, UserPreference, WeightEntry
 from app.db.session import SessionLocal
 from app.main import app
 from tests.conftest import ALLOWED_ORIGIN
@@ -53,6 +53,11 @@ def deletable_user(db):
         )
     )
     db.add(CraftedMealsCache(user_id=user.id, date=datetime.date.today(), payload=[]))
+    today = datetime.date.today()
+    db.add(QuickAddEntry(user_id=user.id, date=today, meal_section="snacks", calories=100))
+    db.add(ExerciseEntry(user_id=user.id, date=today, activity="other", label="Other", minutes=10, calories=50))
+    db.add(WeightEntry(user_id=user.id, date=today, weight_kg=70))
+    db.add(LoggingEvent(user_id=user.id, kind="quick_add", date=today))
     db.commit()
 
     # Force-load attributes (the second commit above expired them) before
@@ -68,6 +73,8 @@ def deletable_user(db):
     # Best-effort cleanup in case a test fails before the endpoint deletes
     # these itself.
     db.query(LoggedMeal).filter(LoggedMeal.user_id == user.id).delete()
+    for model in (QuickAddEntry, ExerciseEntry, WeightEntry, LoggingEvent):
+        db.query(model).filter(model.user_id == user.id).delete()
     db.query(CraftedMealsCache).filter(CraftedMealsCache.user_id == user.id).delete()
     db.query(UserPreference).filter(UserPreference.user_id == user.id).delete()
     db.query(User).filter(User.id == user.id).delete()
@@ -91,3 +98,5 @@ def test_delete_me_removes_every_scoped_row(db, deletable_user):
     assert db.query(UserPreference).filter(UserPreference.user_id == user_id).one_or_none() is None
     assert db.query(LoggedMeal).filter(LoggedMeal.user_id == user_id).one_or_none() is None
     assert db.query(CraftedMealsCache).filter(CraftedMealsCache.user_id == user_id).one_or_none() is None
+    for model in (QuickAddEntry, ExerciseEntry, WeightEntry, LoggingEvent):
+        assert db.query(model).filter(model.user_id == user_id).count() == 0

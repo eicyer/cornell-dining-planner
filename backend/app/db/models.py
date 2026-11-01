@@ -113,6 +113,9 @@ class UserPreference(Base):
     activity_level: Mapped[ActivityLevel | None] = mapped_column(Enum(ActivityLevel), nullable=True)
     health_goal: Mapped[HealthGoal | None] = mapped_column(Enum(HealthGoal), nullable=True)
     macro_style: Mapped[MacroStyle | None] = mapped_column(Enum(MacroStyle), nullable=True)
+    # kg/week, magnitude only (direction comes from health_goal) — see
+    # docs/adr/0031. Null keeps the older fixed-percentage shift.
+    weekly_pace_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Recorded so re-opening the edit form can default back to whichever mode
     # produced the saved targets, instead of always assuming manual entry.
     target_mode: Mapped[TargetMode] = mapped_column(Enum(TargetMode), default=TargetMode.manual)
@@ -132,6 +135,15 @@ class UserPreference(Base):
     # completed — see docs/adr/0011-food-preference-survey. Its results merge
     # into liked_tags/disliked_tags above, not a separate field.
     food_survey_completed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Whether logged Exercise Entries add to the day's calorie budget
+    # (Remaining = Goal − Food + Exercise) — see docs/adr/0025. Off is for
+    # users whose Activity Level already counts their workouts.
+    exercise_adds_to_goal: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+
+    # "imperial" (lb, ft/in) or "metric" — display only; every stored
+    # measurement stays metric. See docs/adr/0026.
+    unit_system: Mapped[str] = mapped_column(String, default="imperial", server_default="imperial")
 
     user: Mapped["User"] = relationship(back_populates="preferences")
 
@@ -340,6 +352,88 @@ class LoggedMeal(Base):
     totals: Mapped[dict] = mapped_column(JSON)
     liked: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow
+    )
+
+
+class QuickAddEntry(Base):
+    """User-typed calories for food outside the dining halls — see
+    docs/adr/0024. Deliberately not a LoggedMeal: its numbers are stored as
+    entered, so it lives apart from the server-recomputed dining-hall log."""
+
+    __tablename__ = "quick_add_entries"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    date: Mapped[datetime.date] = mapped_column(Date)
+    # One of app.services.meal_sections.MEAL_SECTIONS — chosen by the user,
+    # unlike a Logged Meal's, which is derived from its Menu Event.
+    meal_section: Mapped[str] = mapped_column(String)
+    name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+
+    calories: Mapped[float] = mapped_column(Float)
+    protein_g: Mapped[float] = mapped_column(Float, default=0.0)
+    carbs_g: Mapped[float] = mapped_column(Float, default=0.0)
+    fat_g: Mapped[float] = mapped_column(Float, default=0.0)
+
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow
+    )
+
+
+class ExerciseEntry(Base):
+    """One logged workout — see docs/adr/0025. Calories are estimated
+    server-side from app.services.exercise unless the user typed them."""
+
+    __tablename__ = "exercise_entries"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    date: Mapped[datetime.date] = mapped_column(Date)
+    # A key of app.services.exercise.ACTIVITIES, or "other".
+    activity: Mapped[str] = mapped_column(String)
+    # Display label, stored so "Other" entries can carry the user's own name.
+    label: Mapped[str] = mapped_column(String(80))
+    minutes: Mapped[int] = mapped_column(Integer)
+    calories: Mapped[float] = mapped_column(Float)
+    calories_typed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow
+    )
+
+
+class WeightEntry(Base):
+    """One Weigh-in — see docs/adr/0026. History only: it never changes
+    UserPreference.weight_kg (the weight Recommended Targets were computed
+    from) on its own."""
+
+    __tablename__ = "weight_entries"
+    __table_args__ = (UniqueConstraint("user_id", "date"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    date: Mapped[datetime.date] = mapped_column(Date)
+    weight_kg: Mapped[float] = mapped_column(Float)
+
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow
+    )
+
+
+class LoggingEvent(Base):
+    """One logging action, for aggregate success metrics only — see
+    docs/adr/0028. Deliberately content-free: no food names, amounts or
+    nutrition, just who, what kind, which diary day, and when."""
+
+    __tablename__ = "logging_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    # One of app.services.logging_events.EVENT_KINDS.
+    kind: Mapped[str] = mapped_column(String)
+    date: Mapped[datetime.date] = mapped_column(Date)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=datetime.datetime.utcnow
     )

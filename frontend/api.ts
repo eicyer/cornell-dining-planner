@@ -63,10 +63,19 @@ export type ActivityLevel = (typeof ACTIVITY_LEVELS)[number];
 export const HEALTH_GOALS = ['lose_weight', 'maintain_weight', 'gain_weight'] as const;
 export type HealthGoal = (typeof HEALTH_GOALS)[number];
 
+// Weekly Pace options per goal, kg/week — mirrors the backend's
+// ALLOWED_WEEKLY_PACES_KG (docs/adr/0031).
+export const WEEKLY_PACES_KG: Record<HealthGoal, number[]> = {
+  lose_weight: [0.25, 0.5],
+  maintain_weight: [],
+  gain_weight: [0.25],
+};
+
 export const MACRO_STYLES = ['balanced', 'lower_carb', 'keto', 'high_protein'] as const;
 export type MacroStyle = (typeof MACRO_STYLES)[number];
 
 export type Sex = 'male' | 'female';
+export type UnitSystem = 'imperial' | 'metric';
 export type TargetMode = 'recommended' | 'manual';
 
 export type Preferences = {
@@ -84,6 +93,7 @@ export type Preferences = {
   activity_level: ActivityLevel | null;
   health_goal: HealthGoal | null;
   macro_style: MacroStyle | null;
+  weekly_pace_kg: number | null;
   target_mode: TargetMode;
   liked_foods_text: string | null;
   disliked_foods_text: string | null;
@@ -91,6 +101,10 @@ export type Preferences = {
   disliked_tags: string[];
   eating_styles: string[];
   food_survey_completed: boolean;
+  // docs/adr/0025 — whether Exercise Entries add to the day's budget.
+  exercise_adds_to_goal: boolean;
+  // docs/adr/0026 — display units only; the API is always metric.
+  unit_system: UnitSystem;
 };
 
 export async function getPreferences(): Promise<Preferences | null> {
@@ -118,6 +132,7 @@ export type RecommendTargetsInput = {
   activity_level: ActivityLevel;
   health_goal: HealthGoal;
   macro_style: MacroStyle;
+  weekly_pace_kg?: number | null;
 };
 
 export type RecommendedTargets = {
@@ -127,6 +142,7 @@ export type RecommendedTargets = {
   protein_goal_g: number;
   carb_goal_g: number;
   fat_goal_g: number;
+  floor_applied: boolean;
 };
 
 export async function recommendTargets(input: RecommendTargetsInput): Promise<RecommendedTargets> {
@@ -245,6 +261,10 @@ export type EateryCrafted = {
   meal_period: string | null;
   crafted_meal: CraftedMeal | null;
   reason_unavailable: string | null;
+  // What crafted_meal was sized to: the Remaining-Budget Target once
+  // anything is logged today, else goal ÷ meals_per_day (docs/adr/0027).
+  target: Totals | null;
+  sized_to_remaining: boolean;
 };
 
 export async function getCraftedMealsToday(): Promise<EateryCrafted[]> {
@@ -261,6 +281,7 @@ export type NextMeal = {
   meal_period: string;
   crafted_meal: CraftedMeal | null;
   reason_unavailable: string | null;
+  target: Totals | null;
 };
 
 // Up to a few ranked meal options for one eatery — see the eatery-detail
@@ -277,6 +298,9 @@ export type EateryCraftedOptions = {
   // Later meal periods still being served today at this eatery, in serving
   // order — empty once the current pick is the last period of the day.
   next_meals: NextMeal[];
+  // What crafted_meals were sized to (docs/adr/0027).
+  target: Totals | null;
+  sized_to_remaining: boolean;
 };
 
 export async function getCraftedMealsForEatery(eateryId: number): Promise<EateryCraftedOptions> {
@@ -308,7 +332,8 @@ export type MenuItemOut = {
 };
 
 export type MenuCategory = { category: string; items: MenuItemOut[] };
-export type MenuEventOut = { meal_period: string; categories: MenuCategory[] };
+// meal_section: the Diary Meal Section this period logs into (docs/adr/0023).
+export type MenuEventOut = { meal_period: string; meal_section: MealSection; categories: MenuCategory[] };
 export type EateryMenu = {
   id: number;
   name: string;
@@ -364,16 +389,22 @@ export type LoggedMeal = {
   liked: boolean | null;
 };
 
+// How the items were chosen; only counted for success metrics
+// (docs/adr/0028), never used for nutrition.
+export type LogSource = 'menu' | 'crafted';
+
 export async function logMeal(
   eateryId: number,
   mealPeriod: string,
   items: { name: string; grams: number }[],
-  liked: boolean | null = null
+  source: LogSource = 'menu'
 ): Promise<LoggedMeal> {
   const res = await apiFetch('/logged-meals', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ eatery_id: eateryId, meal_period: mealPeriod, items, liked }),
+    // No `liked` key: logging appends to the Menu Event's existing Logged
+    // Meal (docs/adr/0023), and sending `liked: null` would clear its rating.
+    body: JSON.stringify({ eatery_id: eateryId, meal_period: mealPeriod, items, source }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -417,10 +448,185 @@ export async function getLoggedMeals(date?: string): Promise<LoggedMeal[]> {
   return res.json();
 }
 
-export type DaySummary = { date: string; totals: Totals; goal: Totals };
+// `goal` is the base goal; when `exercise_adds_to_goal`, the day's budget
+// is goal + exercise_calories (docs/adr/0025).
+export type DaySummary = {
+  date: string;
+  totals: Totals;
+  goal: Totals;
+  exercise_calories: number;
+  exercise_adds_to_goal: boolean;
+};
 
 export async function getLoggedMealsSummary(days = 7): Promise<DaySummary[]> {
   const res = await apiFetch(`/logged-meals/summary?days=${days}`);
   if (!res.ok) throw new Error(`GET /logged-meals/summary failed: ${res.status}`);
+  return res.json();
+}
+
+// Logging Streak (docs/adr/0032): consecutive Logging Days ending today, or
+// yesterday while today has nothing logged yet.
+export type Streak = { days: number; logged_today: boolean };
+
+export async function getStreak(): Promise<Streak> {
+  const res = await apiFetch('/logged-meals/streak');
+  if (!res.ok) throw new Error(`GET /logged-meals/streak failed: ${res.status}`);
+  return res.json();
+}
+
+// Food from anywhere other than a dining-hall menu (docs/adr/0024). Unlike
+// a Logged Meal, these numbers are the user's own and stored as entered,
+// and the Meal Section is chosen rather than derived.
+export type QuickAddEntry = {
+  id: number;
+  date: string;
+  meal_section: MealSection;
+  name: string | null;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+};
+
+export type QuickAddInput = {
+  meal_section: MealSection;
+  name: string | null;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+};
+
+export async function getQuickAdds(date: string): Promise<QuickAddEntry[]> {
+  const res = await apiFetch(`/quick-add?date=${date}`);
+  if (!res.ok) throw new Error(`GET /quick-add failed: ${res.status}`);
+  return res.json();
+}
+
+export async function createQuickAdd(date: string, input: QuickAddInput): Promise<QuickAddEntry> {
+  const res = await apiFetch('/quick-add', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ date, ...input }),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `POST /quick-add failed: ${res.status}`));
+  return res.json();
+}
+
+export async function updateQuickAdd(entryId: number, input: QuickAddInput): Promise<QuickAddEntry> {
+  const res = await apiFetch(`/quick-add/${entryId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `PATCH /quick-add/${entryId} failed: ${res.status}`));
+  return res.json();
+}
+
+export async function deleteQuickAdd(entryId: number): Promise<void> {
+  const res = await apiFetch(`/quick-add/${entryId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`DELETE /quick-add/${entryId} failed: ${res.status}`);
+}
+
+// One logged workout (docs/adr/0025). Calories are estimated server-side
+// from activity × minutes × weight unless `calories_typed`.
+export type ExerciseEntry = {
+  id: number;
+  date: string;
+  activity: string;
+  label: string;
+  minutes: number;
+  calories: number;
+  calories_typed: boolean;
+};
+
+export type ExerciseActivity = { key: string; label: string };
+
+// `activity: 'other'` always needs `calories`; omitted calories otherwise
+// mean "estimate it".
+export type ExerciseInput = { activity: string; minutes: number; calories: number | null; label: string | null };
+
+export const OTHER_ACTIVITY = 'other';
+
+export async function getExerciseActivities(): Promise<ExerciseActivity[]> {
+  const res = await apiFetch('/exercise/activities');
+  if (!res.ok) throw new Error(`GET /exercise/activities failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getExercise(date: string): Promise<ExerciseEntry[]> {
+  const res = await apiFetch(`/exercise?date=${date}`);
+  if (!res.ok) throw new Error(`GET /exercise failed: ${res.status}`);
+  return res.json();
+}
+
+export async function createExercise(date: string, input: ExerciseInput): Promise<ExerciseEntry> {
+  const res = await apiFetch('/exercise', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ date, ...input }),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `POST /exercise failed: ${res.status}`));
+  return res.json();
+}
+
+export async function replaceExercise(entryId: number, input: ExerciseInput): Promise<ExerciseEntry> {
+  const res = await apiFetch(`/exercise/${entryId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `PUT /exercise/${entryId} failed: ${res.status}`));
+  return res.json();
+}
+
+export async function deleteExercise(entryId: number): Promise<void> {
+  const res = await apiFetch(`/exercise/${entryId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`DELETE /exercise/${entryId} failed: ${res.status}`);
+}
+
+// One Weigh-in per day (docs/adr/0026). History only — targets change
+// only through recalculateTargets().
+export type WeighIn = { date: string; weight_kg: number };
+
+export async function getWeighIns(days = 90): Promise<WeighIn[]> {
+  const res = await apiFetch(`/weight?days=${days}`);
+  if (!res.ok) throw new Error(`GET /weight failed: ${res.status}`);
+  return res.json();
+}
+
+export async function putWeighIn(date: string, weightKg: number): Promise<WeighIn> {
+  const res = await apiFetch(`/weight/${date}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ weight_kg: weightKg }),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `PUT /weight/${date} failed: ${res.status}`));
+  return res.json();
+}
+
+export async function deleteWeighIn(date: string): Promise<void> {
+  const res = await apiFetch(`/weight/${date}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`DELETE /weight/${date} failed: ${res.status}`);
+}
+
+// Re-runs Recommended Targets with the latest Weigh-in and saves them.
+export async function recalculateTargets(): Promise<Preferences> {
+  const res = await apiFetch('/preferences/recalculate-targets', { method: 'POST' });
+  if (!res.ok) throw new Error(await errorMessage(res, `POST /preferences/recalculate-targets failed: ${res.status}`));
+  return res.json();
+}
+
+// Items logged in the last 30 days with the grams last used, and the hall
+// each Meal Section was last logged from (docs/adr/0030). The add-food flow
+// shows only the recents that are on today's selected menu.
+export type Recents = {
+  items: { name: string; grams: number; last_date: string }[];
+  last_eatery_by_section: Partial<Record<MealSection, number>>;
+};
+
+export async function getRecents(): Promise<Recents> {
+  const res = await apiFetch('/logged-meals/recents');
+  if (!res.ok) throw new Error(`GET /logged-meals/recents failed: ${res.status}`);
   return res.json();
 }

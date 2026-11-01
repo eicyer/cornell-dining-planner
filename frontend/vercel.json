@@ -8,6 +8,13 @@
     { "source": "/preferences/:path*", "destination": "https://cornell-dining-planner-production-0c3b.up.railway.app/preferences/:path*" },
     { "source": "/logged-meals", "destination": "https://cornell-dining-planner-production-0c3b.up.railway.app/logged-meals" },
     { "source": "/logged-meals/:path*", "destination": "https://cornell-dining-planner-production-0c3b.up.railway.app/logged-meals/:path*" },
+    { "source": "/portion-overrides", "destination": "https://cornell-dining-planner-production-0c3b.up.railway.app/portion-overrides" },
+    { "source": "/quick-add", "destination": "https://cornell-dining-planner-production-0c3b.up.railway.app/quick-add" },
+    { "source": "/quick-add/:path*", "destination": "https://cornell-dining-planner-production-0c3b.up.railway.app/quick-add/:path*" },
+    { "source": "/exercise", "destination": "https://cornell-dining-planner-production-0c3b.up.railway.app/exercise" },
+    { "source": "/exercise/:path*", "destination": "https://cornell-dining-planner-production-0c3b.up.railway.app/exercise/:path*" },
+    { "source": "/weight", "destination": "https://cornell-dining-planner-production-0c3b.up.railway.app/weight" },
+    { "source": "/weight/:path*", "destination": "https://cornell-dining-planner-production-0c3b.up.railway.app/weight/:path*" },
     { "source": "/admin", "destination": "https://cornell-dining-planner-production-0c3b.up.railway.app/admin" },
     { "source": "/admin/api/:path*", "destination": "https://cornell-dining-planner-production-0c3b.up.railway.app/admin/api/:path*" }
   ]

@@ -25,8 +25,12 @@ The mapping from a Menu Item to its calorie/macro density **per 100g** — from 
 _Avoid_: Nutrition lookup, food match, portion (this is a density, not a serving size)
 
 **Crafted Meal**:
-A system-suggested combination of Menu Items from a single eatery/Menu Event, selected to fit a user's calorie/macro/preference targets.
+A system-suggested combination of Menu Items from a single eatery/Menu Event, selected to fit a user's calorie/macro/preference targets. Secondary to the Diary since the tracking pivot: its items are precomputed daily, and once the user has logged anything today its portions are re-sized to the Remaining-Budget Target — see [[0027-crafted-meals-in-a-tracking-first-app]].
 _Avoid_: Suggested meal, recommendation
+
+**Remaining-Budget Target**:
+The per-meal calorie/macro target a Crafted Meal is sized to once anything is logged today: (daily goal + counted exercise − eaten today in other sections) ÷ (this section + later main Meal Sections still empty), clamped to 50–150% of the flat goal ÷ meals_per_day split. Before the first log of the day, the flat split applies. See [[0027-crafted-meals-in-a-tracking-first-app]].
+_Avoid_: Per-meal target (that's the flat split), remaining calories (that's the Diary's day-level figure)
 
 **Plate Role**:
 One of three roles (`protein`, `carb`, `vegetable`) a Menu Item is classified into for Crafted Meal candidate generation, derived from its own nutrition numbers (protein density, calorie density) and name — not its Menu Item category, which is a dining-hall station grouping and not a reliable stand-in for food role (a "Salad" station can list dressing, tofu, and rice side by side). A Crafted Meal candidate draws at most one item per role, sized off that role's benchmark portion range; items that aren't a real plate component (drinks, desserts, condiments) classify to no role and never enter candidate generation. See [[0012-plate-role-portioning]].
@@ -61,12 +65,40 @@ A repeatable, Cornell-wide pairwise "would you rather" comparison (see [[0020-co
 _Avoid_: none
 
 **Activity Level**:
-A user's self-reported exercise frequency (sedentary through very active), used as the multiplier from BMR to TDEE in Recommended Targets. Input to Recommended Targets only.
+A user's self-reported exercise frequency (sedentary through very active), used as the multiplier from BMR to TDEE in Recommended Targets. Input to Recommended Targets only. Users who log Exercise Entries should pick the level for their days without those workouts, or turn off adding exercise to the budget — see [[0025-exercise-entries-and-net-calories]].
 _Avoid_: none
 
+**Exercise Entry**:
+One logged workout on one Diary day: an activity and minutes, with calories burned estimated server-side as (MET − 1) × weight × hours, or typed by the user when there's no estimate. By default its calories add to that day's budget (Remaining = Goal − Food + Exercise); macro targets never change. See [[0025-exercise-entries-and-net-calories]].
+_Avoid_: Activity (that's Activity Level), workout log
+
+**Weigh-in**:
+One weight a user logged for one day (at most one per day; logging again replaces it), stored in kg. Weigh-ins are history for the Progress screen and the exercise estimate; they never change Recommended Targets on their own — Progress offers to recalculate when the latest weigh-in is ≥1 kg from the weight the targets were computed from. See [[0026-weight-log-and-progress]].
+_Avoid_: Weight (ambiguous with the profile weight on UserPreference), weight goal (there isn't one)
+
+**Logging Day**:
+A calendar day on which a user logged any food (a Logged Meal or a Quick Add Entry). The unit of the pivot's north-star metric: logging days per logging user per week. See [[0028-success-metrics-and-first-party-instrumentation]].
+_Avoid_: Active day (opening the app isn't logging)
+
+**Logging Streak**:
+The number of consecutive Logging Days ending today, or ending yesterday when today has nothing logged yet (a streak stays alive until the day is over). Backfilling a missed day repairs it. Shown quietly on the Diary (when 2 or more) and on Progress; no celebrations. See [[0032-streaks-day-completion-and-reminders]].
+_Avoid_: Streak day, chain
+
+**Logging Event**:
+A content-free record that a user performed one logging action — kind (menu, crafted, quick_add, exercise, weigh_in), diary date and time — kept only for aggregate success metrics. Never holds food names, amounts or nutrition. See [[0028-success-metrics-and-first-party-instrumentation]].
+_Avoid_: Analytics event (suggests a third-party tool), log entry
+
 **Health Goal**:
-A user's stated intent for total daily calories — lose weight, maintain weight, or gain weight. Input to Recommended Targets; shifts the calorie target by a fixed, safety-bounded percentage of TDEE and sets the protein-per-kg used in the macro split. Independent of Macro Style and Diet Restriction.
+A user's stated intent for total daily calories — lose weight, maintain weight, or gain weight. Input to Recommended Targets; shifts the calorie target by the Weekly Pace when one is set, otherwise by a fixed, safety-bounded percentage of TDEE, and sets the protein-per-kg used in the macro split. Independent of Macro Style and Diet Restriction.
 _Avoid_: Goal (too broad), diet (that's Diet Restriction, a different thing)
+
+**Weekly Pace**:
+How fast a user with a lose or gain Health Goal wants their weight to change, in kg per week: 0.25 or 0.5 to lose, 0.25 to gain. Recommended Targets turn it into a daily calorie adjustment (pace × 7700 ÷ 7, capped as a share of TDEE, then floored). Unset means the older fixed-percentage shift. See [[0031-onboarding-and-goal-setting]].
+_Avoid_: Rate, speed
+
+**Setup**:
+The two-step first run for a user with no saved preferences: their goal (body stats, Activity Level, Health Goal, Weekly Pace, leading to Recommended Targets), then optional Hard Constraints, then the Diary. Everything else in Preferences is deferred with defaults. See [[0031-onboarding-and-goal-setting]].
+_Avoid_: Survey (that's the pairwise Soft Preference comparisons), onboarding form
 
 **Macro Style**:
 A user's preference for how calories are split across protein/carb/fat — "Balanced" (the default split) or "Lower carb" (a higher fat share, carbs shrink to fill what's left; protein is unchanged). Input to Recommended Targets only; never filters or influences which foods a Crafted Meal can contain — that's Diet Restriction's job.
@@ -89,9 +121,13 @@ An admin-set Portion Unit for one item name (`app.db.models.PortionOverride`), e
 _Avoid_: none
 
 **Logged Meal**:
-A record that a user actually ate a specific set of dining-hall Menu Items at a given eatery/Menu Event, created by accepting a Crafted Meal or manually assembling items. The unit daily/weekly totals are computed from. Scoped to dining-hall food only — not a general food diary. At most one per user per Menu Event: logging more from the same Menu Event appends to it, and re-adding an item it already holds grows that item's grams rather than adding a second line — see [[0023-diary-meal-sections]].
+A record that a user actually ate a specific set of dining-hall Menu Items at a given eatery/Menu Event, created by accepting a Crafted Meal or manually assembling items. The unit daily/weekly totals are computed from. Scoped to dining-hall food only — food from anywhere else is a Quick Add Entry. At most one per user per Menu Event: logging more from the same Menu Event appends to it, and re-adding an item it already holds grows that item's grams rather than adding a second line — see [[0023-diary-meal-sections]].
 _Avoid_: Diary entry, food log entry
 
 **Meal Section**:
 One of four fixed buckets every Diary day is split into — Breakfast, Lunch, Dinner, Snacks — always shown, in that order. A Logged Meal's Meal Section is always derived from its Menu Event's meal period (Breakfast → Breakfast; Brunch, Lunch, Late Lunch → Lunch; Dinner → Dinner; Late Night → Snacks), never picked by the user; one section can hold several Logged Meals from different eateries. See [[0023-diary-meal-sections]].
 _Avoid_: Meal period / Menu Event (Cornell's serving windows — several map to one Meal Section), slot
+
+**Quick Add Entry**:
+A user-typed calorie amount (optionally with a name and protein/carbs/fat) for food that isn't on a dining-hall menu, filed under one Meal Section of one Diary day. Its numbers are the user's own and are stored as entered within sanity bounds — the one exception to server-recomputed nutrition, and kept in its own record so Logged Meals stay dining-hall-only. Counts toward the day's totals; never rated, never feeds Soft Preferences. See [[0024-quick-add-entries]].
+_Avoid_: Custom food, manual entry (suggests a reusable food), Logged Meal (that's dining-hall food only)

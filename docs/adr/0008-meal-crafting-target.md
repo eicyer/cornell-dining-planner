@@ -1,5 +1,7 @@
 # Per-meal target is daily goals divided by a flat meals_per_day, not a real schedule
 
+**Status: superseded by [0027](0027-crafted-meals-in-a-tracking-first-app.md) once the user has logged anything today.** The flat split below still applies before the first log of the day, and bounds the remaining-budget target.
+
 Meal crafting ([[0003-meal-crafting-algorithm]]) needs a per-meal calorie/macro target, but `UserPreference` only stores daily goals ([[0001-nutrition-data-source]] grilling: "Calories + protein/carbs/fat grams"). The honest way to get a per-meal target would know which meal this is (first of the day? third?) and how the user's remaining budget looks after meals already logged today.
 
 Decision (MVP simplification): add `meals_per_day` (default 3) to `UserPreference`, and divide every daily goal by it uniformly for every crafted meal, regardless of time of day or what's already been eaten. This is deliberately not a real model of how someone eats across a day — it's the cheapest thing that gives the optimizer a usable target without pulling `LoggedMeal` history into the crafting request. Revisit once logging is wired into the landing page: a real implementation would subtract today's `LoggedMeal` totals from daily goals before dividing by remaining expected meals.

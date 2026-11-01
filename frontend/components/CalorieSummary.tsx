@@ -5,13 +5,16 @@ import { BarTrack } from './ProgressBar';
 
 // The Diary's pinned header: MyFitnessPal's "Goal − Food = Remaining"
 // formula set as a mono spec-sheet line, with Remaining as the one large
-// number on the screen. Exercise will join the formula once it's decided
-// (wayfinder #54). Over goal follows Design.md's weight-coded rule: the bar
-// and the Remaining figure switch to accent and the label reads "Over".
-export default function CalorieSummary({ totals, goal }: { totals: Totals; goal: Totals }) {
-  const remaining = goal.calories - totals.calories;
+// number on the screen. Exercise joins the formula only on days that have
+// some and when the user counts it (docs/adr/0025) — the caller passes 0
+// otherwise. It raises the calorie budget only; macro goals don't move.
+// Over goal follows Design.md's weight-coded rule: the bar and the
+// Remaining figure switch to accent and the label reads "Over".
+export default function CalorieSummary({ totals, goal, exercise = 0 }: { totals: Totals; goal: Totals; exercise?: number }) {
+  const budget = goal.calories + exercise;
+  const remaining = budget - totals.calories;
   const over = remaining < 0;
-  const pct = goal.calories > 0 ? (totals.calories / goal.calories) * 100 : 0;
+  const pct = budget > 0 ? (totals.calories / budget) * 100 : 0;
 
   return (
     <View style={styles.container}>
@@ -19,6 +22,12 @@ export default function CalorieSummary({ totals, goal }: { totals: Totals; goal:
         <Figure value={goal.calories} label="Goal" />
         <Text style={styles.operator}>−</Text>
         <Figure value={totals.calories} label="Food" />
+        {exercise > 0 && (
+          <>
+            <Text style={styles.operator}>+</Text>
+            <Figure value={exercise} label="Exercise" />
+          </>
+        )}
         <Text style={styles.operator}>=</Text>
         <View style={styles.remaining}>
           <Text style={[styles.remainingValue, over && styles.overText]}>{Math.round(Math.abs(remaining)).toLocaleString()}</Text>

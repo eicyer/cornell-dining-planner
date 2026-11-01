@@ -75,7 +75,7 @@ export default function EateryDetailScreen({
     if (!options || !options.meal_period) return null;
     setOptionLogStatus((s) => ({ ...s, [index]: 'saving' }));
     try {
-      const logged = await logMeal(eatery.id, options.meal_period, items);
+      const logged = await logMeal(eatery.id, options.meal_period, items, 'crafted');
       setOptionLogStatus((s) => ({ ...s, [index]: 'done' }));
       success();
       onLogged(logged);
@@ -89,7 +89,7 @@ export default function EateryDetailScreen({
   async function handleLogNextMeal(mealPeriod: string, items: { name: string; grams: number }[]) {
     setNextMealLogStatus((s) => ({ ...s, [mealPeriod]: 'saving' }));
     try {
-      const logged = await logMeal(eatery.id, mealPeriod, items);
+      const logged = await logMeal(eatery.id, mealPeriod, items, 'crafted');
       setNextMealLogStatus((s) => ({ ...s, [mealPeriod]: 'done' }));
       success();
       onLogged(logged);
@@ -120,6 +120,9 @@ export default function EateryDetailScreen({
   }, [grams, event]);
 
   const itemCount = Object.values(grams).filter((g) => g > 0).length;
+  // The server's target once options load (sized to what's left today —
+  // docs/adr/0027), else the flat split passed in from the Today list.
+  const mealTarget = options?.target ?? perMealTarget;
 
   async function handleLog() {
     if (!event) return;
@@ -178,13 +181,13 @@ export default function EateryDetailScreen({
                 <CraftedMealCard
                   meal={meal}
                   mealPeriod={options.meal_period ?? ''}
-                  perMealTarget={perMealTarget}
+                  perMealTarget={mealTarget}
                   status={optionLogStatus[i] ?? 'idle'}
                   onLog={(items) => handleLogOption(i, items)}
                   onUndoLog={() => setOptionLogStatus((s) => ({ ...s, [i]: 'idle' }))}
                   // Deliberately no onLogged here: that jumps to the Diary, which
                   // would cut off logging a second item from the same plate.
-                  onLogItem={(item) => logMeal(eatery.id, options.meal_period ?? '', [item])}
+                  onLogItem={(item) => logMeal(eatery.id, options.meal_period ?? '', [item], 'crafted')}
                 />
               </View>
             ))}
@@ -200,11 +203,11 @@ export default function EateryDetailScreen({
                   <CraftedMealCard
                     meal={next.crafted_meal}
                     mealPeriod={next.meal_period}
-                    perMealTarget={perMealTarget}
+                    perMealTarget={next.target ?? perMealTarget}
                     status={nextMealLogStatus[next.meal_period] ?? 'idle'}
                     onLog={(items) => handleLogNextMeal(next.meal_period, items)}
                     onUndoLog={() => setNextMealLogStatus((s) => ({ ...s, [next.meal_period]: 'idle' }))}
-                    onLogItem={(item) => logMeal(eatery.id, next.meal_period, [item])}
+                    onLogItem={(item) => logMeal(eatery.id, next.meal_period, [item], 'crafted')}
                   />
                 </View>
               ) : (
@@ -268,8 +271,8 @@ export default function EateryDetailScreen({
       {showFullMenu && (
         <View style={styles.tray}>
           {error && <Text style={styles.error}>{error}</Text>}
-          {perMealTarget && itemCount > 0 && (
-            <ProgressBar label="This meal" value={totals.calories} goal={perMealTarget.calories} unit=" cal" />
+          {mealTarget && itemCount > 0 && (
+            <ProgressBar label="This meal" value={totals.calories} goal={mealTarget.calories} unit=" cal" />
           )}
           <Text style={styles.trayText}>
             {itemCount} item{itemCount === 1 ? '' : 's'} · {Math.round(totals.calories)} cal ·{' '}

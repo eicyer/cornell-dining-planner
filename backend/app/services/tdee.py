@@ -35,6 +35,23 @@ GOAL_ADJUSTMENT_FRACTION: dict[HealthGoal, float] = {
     HealthGoal.gain_weight: 0.15,
 }
 
+# Weekly Pace (docs/adr/0031): the only paces offered per goal, in kg/week.
+# No 1 kg/week option — the offered options have to already be the sane
+# ones, same reasoning as GOAL_ADJUSTMENT_FRACTION above.
+ALLOWED_WEEKLY_PACES_KG: dict[HealthGoal, tuple[float, ...]] = {
+    HealthGoal.lose_weight: (0.25, 0.5),
+    HealthGoal.maintain_weight: (),
+    HealthGoal.gain_weight: (0.25,),
+}
+KCAL_PER_KG = 7700.0
+# A pace's daily adjustment is capped to these shares of TDEE so a small
+# person's 0.5 kg/week can't become a crash deficit before the floor.
+MAX_PACE_FRACTION: dict[HealthGoal, float] = {
+    HealthGoal.lose_weight: 0.25,
+    HealthGoal.maintain_weight: 0.0,
+    HealthGoal.gain_weight: 0.20,
+}
+
 # Never recommend below this regardless of how the deficit math works out —
 # commonly-cited safe minimums below which a diet needs clinical
 # supervision, not an app.
@@ -99,6 +116,9 @@ class RecommendedTargets:
     protein_goal_g: int
     carb_goal_g: int
     fat_goal_g: int
+    # True when MIN_SAFE_CALORIES raised the target — the UI says so rather
+    # than silently showing a number the chosen pace didn't produce.
+    floor_applied: bool = False
 
 
 def mifflin_st_jeor_bmr(sex: Sex, weight_kg: float, height_cm: float, age: int) -> float:
@@ -115,11 +135,17 @@ def recommend_targets(
     activity_level: ActivityLevel,
     health_goal: HealthGoal,
     macro_style: MacroStyle = MacroStyle.balanced,
+    weekly_pace_kg: float | None = None,
 ) -> RecommendedTargets:
     bmr = mifflin_st_jeor_bmr(sex, weight_kg, height_cm, age)
     tdee = bmr * ACTIVITY_MULTIPLIERS[activity_level]
 
-    adjusted = tdee * (1 + GOAL_ADJUSTMENT_FRACTION[health_goal])
+    if weekly_pace_kg is None or health_goal == HealthGoal.maintain_weight:
+        adjusted = tdee * (1 + GOAL_ADJUSTMENT_FRACTION[health_goal])
+    else:
+        delta = min(weekly_pace_kg * KCAL_PER_KG / 7, tdee * MAX_PACE_FRACTION[health_goal])
+        adjusted = tdee - delta if health_goal == HealthGoal.lose_weight else tdee + delta
+    floor_applied = adjusted < MIN_SAFE_CALORIES[sex]
     calories = min(max(adjusted, MIN_SAFE_CALORIES[sex]), MAX_SAFE_CALORIES)
 
     protein_g = weight_kg * (PROTEIN_G_PER_KG[health_goal] + PROTEIN_G_PER_KG_BOOST_BY_MACRO_STYLE[macro_style])
@@ -148,4 +174,5 @@ def recommend_targets(
         protein_goal_g=round(protein_g),
         carb_goal_g=round(carb_g),
         fat_goal_g=round(fat_g),
+        floor_applied=floor_applied,
     )

@@ -2,7 +2,7 @@ import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user
@@ -30,7 +30,8 @@ from app.services.llm_enrichment import ALLERGENS, DIET_TAGS
 from app.services.meal_preference_survey import CommonFoodItem, build_meal_preference_survey
 from app.services.preference_parsing import parse_preferences
 from app.services.station_survey import StationItem, build_station_survey
-from app.services.tdee import recommend_targets
+from app.services.tdee import ALLOWED_WEEKLY_PACES_KG, recommend_targets
+from app.services.weight import latest_weigh_in_kg
 from app.services.llm_enrichment import make_client as make_llm_client
 
 router = APIRouter()
@@ -49,6 +50,15 @@ def _invalidate_crafted_meals_cache(db: Session, user_id: int) -> None:
     db.query(CraftedMealsCache).filter(CraftedMealsCache.user_id == user_id).update(
         {"stale": True}, synchronize_session=False
     )
+
+
+def _check_weekly_pace(health_goal: HealthGoal | None, weekly_pace_kg: float | None) -> None:
+    """Only the paces docs/adr/0031 offers for that goal; none for maintain."""
+    if weekly_pace_kg is None:
+        return
+    allowed = ALLOWED_WEEKLY_PACES_KG.get(health_goal, ()) if health_goal else ()
+    if weekly_pace_kg not in allowed:
+        raise ValueError(f"weekly_pace_kg must be one of {allowed} for health_goal {health_goal}")
 
 
 # Hard bounds enforced on every save, whether the targets came from the TDEE
@@ -80,6 +90,7 @@ class PreferencesIn(BaseModel):
     activity_level: ActivityLevel | None = None
     health_goal: HealthGoal | None = None
     macro_style: MacroStyle | None = None
+    weekly_pace_kg: float | None = None
     target_mode: TargetMode = TargetMode.manual
 
     liked_foods_text: str | None = None
@@ -88,6 +99,10 @@ class PreferencesIn(BaseModel):
     # see docs/adr/0009-deterministic-preference-preranking and
     # docs/adr/0015-eating-styles-registry.
     eating_styles: list[str] = []
+    # docs/adr/0025 — whether Exercise Entries add to the day's budget.
+    exercise_adds_to_goal: bool = True
+    # docs/adr/0026 — display units for weight/height; storage stays metric.
+    unit_system: Literal["imperial", "metric"] = "imperial"
 
     @field_validator("diet_restrictions")
     @classmethod
@@ -113,6 +128,11 @@ class PreferencesIn(BaseModel):
             raise ValueError(f"Unknown eating_styles {invalid}, must be a subset of {EATING_STYLES}")
         return v
 
+    @model_validator(mode="after")
+    def _validate_weekly_pace(self) -> "PreferencesIn":
+        _check_weekly_pace(self.health_goal, self.weekly_pace_kg)
+        return self
+
 
 class PreferencesOut(BaseModel):
     calorie_goal: int
@@ -129,6 +149,7 @@ class PreferencesOut(BaseModel):
     activity_level: ActivityLevel | None
     health_goal: HealthGoal | None
     macro_style: MacroStyle | None
+    weekly_pace_kg: float | None
     target_mode: TargetMode
     liked_foods_text: str | None
     disliked_foods_text: str | None
@@ -136,6 +157,8 @@ class PreferencesOut(BaseModel):
     disliked_tags: list[str]
     eating_styles: list[str]
     food_survey_completed: bool
+    exercise_adds_to_goal: bool
+    unit_system: str
 
 
 class RecommendTargetsIn(BaseModel):
@@ -146,6 +169,12 @@ class RecommendTargetsIn(BaseModel):
     activity_level: ActivityLevel
     health_goal: HealthGoal
     macro_style: MacroStyle = MacroStyle.balanced
+    weekly_pace_kg: float | None = None
+
+    @model_validator(mode="after")
+    def _validate_weekly_pace(self) -> "RecommendTargetsIn":
+        _check_weekly_pace(self.health_goal, self.weekly_pace_kg)
+        return self
 
 
 class RecommendTargetsOut(BaseModel):
@@ -155,6 +184,7 @@ class RecommendTargetsOut(BaseModel):
     protein_goal_g: int
     carb_goal_g: int
     fat_goal_g: int
+    floor_applied: bool
 
 
 @router.post("/preferences/recommend-targets", response_model=RecommendTargetsOut)
@@ -169,6 +199,7 @@ def recommend_targets_endpoint(
         activity_level=body.activity_level,
         health_goal=body.health_goal,
         macro_style=body.macro_style,
+        weekly_pace_kg=body.weekly_pace_kg,
     )
     return RecommendTargetsOut(**vars(result))
 
@@ -205,6 +236,7 @@ async def put_preferences(
     prefs.activity_level = body.activity_level
     prefs.health_goal = body.health_goal
     prefs.macro_style = body.macro_style
+    prefs.weekly_pace_kg = body.weekly_pace_kg
     prefs.target_mode = body.target_mode
     # Only re-parse (an LLM call) when the free text actually changed —
     # every PUT /preferences previously re-sent unchanged text through the
@@ -220,6 +252,8 @@ async def put_preferences(
     prefs.liked_foods_text = body.liked_foods_text
     prefs.disliked_foods_text = body.disliked_foods_text
     prefs.eating_styles = body.eating_styles
+    prefs.exercise_adds_to_goal = body.exercise_adds_to_goal
+    prefs.unit_system = body.unit_system
 
     if text_changed:
         liked_tags, disliked_tags = await parse_preferences(
@@ -227,6 +261,43 @@ async def put_preferences(
         )
         prefs.liked_tags = liked_tags
         prefs.disliked_tags = disliked_tags
+
+    _invalidate_crafted_meals_cache(db, user.id)
+    db.commit()
+    db.refresh(prefs)
+    return prefs
+
+
+@router.post("/preferences/recalculate-targets", response_model=PreferencesOut)
+def recalculate_targets(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Re-runs Recommended Targets with the latest Weigh-in and saves both
+    the new targets and that weight as the profile weight. Only ever called
+    by the user tapping "Recalculate" on Progress — targets never follow
+    weigh-ins on their own (docs/adr/0026)."""
+    prefs = db.query(UserPreference).filter(UserPreference.user_id == user.id).one_or_none()
+    if prefs is None or prefs.target_mode != TargetMode.recommended:
+        raise HTTPException(status_code=400, detail="Only recommended targets can be recalculated")
+    if None in (prefs.age, prefs.sex, prefs.height_cm, prefs.activity_level, prefs.health_goal):
+        raise HTTPException(status_code=400, detail="Your profile is incomplete; update it in Preferences")
+    weight_kg = latest_weigh_in_kg(db, user.id)
+    if weight_kg is None:
+        raise HTTPException(status_code=400, detail="Log a weigh-in first")
+
+    result = recommend_targets(
+        sex=prefs.sex,
+        weight_kg=weight_kg,
+        height_cm=prefs.height_cm,
+        age=prefs.age,
+        activity_level=prefs.activity_level,
+        health_goal=prefs.health_goal,
+        macro_style=prefs.macro_style or MacroStyle.balanced,
+        weekly_pace_kg=prefs.weekly_pace_kg,
+    )
+    prefs.weight_kg = weight_kg
+    prefs.calorie_goal = result.calorie_goal
+    prefs.protein_goal_g = result.protein_goal_g
+    prefs.carb_goal_g = result.carb_goal_g
+    prefs.fat_goal_g = result.fat_goal_g
 
     _invalidate_crafted_meals_cache(db, user.id)
     db.commit()

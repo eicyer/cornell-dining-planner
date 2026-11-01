@@ -4,7 +4,7 @@ import ChevronRight from 'lucide-react-native/icons/chevron-right';
 import { EateryCrafted, Totals, logMeal } from './api';
 import CraftedMealCard, { LogStatus } from './components/CraftedMealCard';
 import Icon from './components/Icon';
-import TopNav from './components/TopNav';
+import TopInset from './components/TopInset';
 import { success } from './haptics';
 import { colors, interaction, space, type } from './theme';
 
@@ -16,25 +16,19 @@ function todayKicker(): string {
 export default function CraftedMealsList({
   eateries,
   perMealTarget,
+  likedTags,
+  dislikedTags,
   refreshing,
   onRefresh,
-  onGoToDiary,
   onSelectEatery,
-  onLogout,
-  onUpdatePreferences,
-  onRetakeFoodSurvey,
-  onRefineMealPreferences,
 }: {
   eateries: EateryCrafted[];
   perMealTarget: Totals | null;
+  likedTags: string[];
+  dislikedTags: string[];
   refreshing: boolean;
   onRefresh: () => void;
-  onGoToDiary: () => void;
   onSelectEatery: (eateryId: number) => void;
-  onLogout: () => void;
-  onUpdatePreferences: () => void;
-  onRetakeFoodSurvey: () => void;
-  onRefineMealPreferences: () => void;
 }) {
   const [logStatus, setLogStatus] = useState<Record<number, LogStatus>>({});
 
@@ -42,7 +36,7 @@ export default function CraftedMealsList({
     if (!eatery.meal_period) return null;
     setLogStatus((s) => ({ ...s, [eatery.id]: 'saving' }));
     try {
-      const logged = await logMeal(eatery.id, eatery.meal_period, items);
+      const logged = await logMeal(eatery.id, eatery.meal_period, items, 'crafted');
       setLogStatus((s) => ({ ...s, [eatery.id]: 'done' }));
       success();
       return logged;
@@ -58,19 +52,15 @@ export default function CraftedMealsList({
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
     >
-      <TopNav
-        current="today"
-        onGoToToday={() => {}}
-        onGoToDiary={onGoToDiary}
-        onUpdatePreferences={onUpdatePreferences}
-        onRetakeFoodSurvey={onRetakeFoodSurvey}
-        onRefineMealPreferences={onRefineMealPreferences}
-        onLogout={onLogout}
-      />
+      <TopInset />
 
       <View style={styles.masthead}>
         <Text style={styles.kicker}>{todayKicker()}</Text>
-        <Text style={styles.title}>Today's Meals For You</Text>
+        <Text style={styles.title}>Menus</Text>
+        <Text style={styles.subtitle}>Each hall's suggested plate for you. Tap a hall for its full menu.</Text>
+        {eateries.some((e) => e.sized_to_remaining) && (
+          <Text style={styles.sizedNote}>Sized to what's left of today's budget.</Text>
+        )}
       </View>
 
       {eateries.map((eatery) => {
@@ -92,25 +82,53 @@ export default function CraftedMealsList({
               <CraftedMealCard
                 meal={eatery.crafted_meal}
                 mealPeriod={eatery.meal_period ?? ''}
-                perMealTarget={perMealTarget}
+                perMealTarget={eatery.target ?? perMealTarget}
                 status={status}
                 onLog={(items) => handleLog(eatery, items)}
                 onUndoLog={() => setLogStatus((s) => ({ ...s, [eatery.id]: 'idle' }))}
-                onLogItem={(item) => logMeal(eatery.id, eatery.meal_period ?? '', [item])}
+                onLogItem={(item) => logMeal(eatery.id, eatery.meal_period ?? '', [item], 'crafted')}
               />
             )}
           </View>
         );
       })}
+
+      {/* Moved here from the Diary (docs/adr/0027): the taste profile only
+          matters to suggestions. Soft Preferences rank, never filter. */}
+      {(likedTags.length > 0 || dislikedTags.length > 0) && (
+        <View style={styles.tastes}>
+          {likedTags.length > 0 && (
+            <Text style={styles.tasteLine}>
+              <Text style={styles.tasteKicker}>Suggestions lean toward </Text>
+              {humanizeTags(likedTags)}
+            </Text>
+          )}
+          {dislikedTags.length > 0 && (
+            <Text style={styles.tasteLine}>
+              <Text style={styles.tasteKicker}>…and away from </Text>
+              {humanizeTags(dislikedTags)}
+            </Text>
+          )}
+        </View>
+      )}
     </ScrollView>
   );
 }
 
+function humanizeTags(tags: string[]): string {
+  return tags.map((t) => t.replace(/_/g, ' ')).join(' · ');
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.paper },
-  // No paddingTop: TopNav owns the status-bar/notch clearance for this screen.
+  // No paddingTop: TopInset owns the status-bar/notch clearance for this screen.
   content: { paddingHorizontal: space.lg, paddingBottom: space.xl, maxWidth: 640, width: '100%', alignSelf: 'center' },
   masthead: { marginBottom: space.xxl },
+  subtitle: { ...type.editorialItalic, marginTop: space.xs },
+  sizedNote: { ...type.editorialItalic, marginTop: space.xs },
+  tastes: { marginTop: space.xl, paddingTop: space.md, borderTopWidth: 1, borderTopColor: colors.hairline, gap: space.xs },
+  tasteLine: { ...type.body, fontSize: 13, color: colors.inkSecondary },
+  tasteKicker: { ...type.editorialItalic, fontSize: 13 },
   kicker: { ...type.kicker, marginBottom: space.xs },
   title: { fontFamily: 'Fraunces_700Bold', fontSize: 30, lineHeight: 36, color: colors.ink },
   eatery: {
