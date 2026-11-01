@@ -64,6 +64,7 @@ export default function ExerciseBlock({
           />
         ) : (
           <Pressable
+            accessibilityRole="button"
             key={entry.id}
             onPress={() => startEditing(entry.id)}
             accessibilityLabel={`Edit ${entry.label}`}
@@ -83,7 +84,7 @@ export default function ExerciseBlock({
       {editing === 'new' ? (
         <ExerciseForm date={date} activities={activities} onSaved={saved} onCancel={() => setEditing(null)} />
       ) : (
-        <Pressable onPress={() => startEditing('new')} hitSlop={8} style={({ pressed }) => [styles.link, pressed && styles.pressed]}>
+        <Pressable accessibilityRole="button" onPress={() => startEditing('new')} hitSlop={8} style={({ pressed }) => [styles.link, pressed && styles.pressed]}>
           <Text style={styles.linkText}>+ Add exercise</Text>
         </Pressable>
       )}

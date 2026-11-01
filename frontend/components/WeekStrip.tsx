@@ -33,6 +33,7 @@ export default function WeekStrip({
   return (
     <View style={styles.row}>
       <Pressable
+        accessibilityRole="button"
         onPress={() => select(addDays(selected, -7))}
         hitSlop={12}
         accessibilityLabel="Previous week"
@@ -47,6 +48,7 @@ export default function WeekStrip({
         const isFuture = date > today;
         return (
           <Pressable
+            accessibilityRole="button"
             key={date}
             onPress={() => select(date)}
             disabled={isFuture}
@@ -63,10 +65,12 @@ export default function WeekStrip({
       })}
 
       <Pressable
+        accessibilityRole="button"
         onPress={() => select(nextWeek)}
         disabled={showsToday}
         hitSlop={12}
         accessibilityLabel="Next week"
+        accessibilityState={{ disabled: showsToday }}
         style={({ pressed }) => [styles.arrow, showsToday && styles.arrowDisabled, pressed && styles.pressed]}
       >
         <Icon icon={ChevronRight} size="md" color="inkSecondary" />

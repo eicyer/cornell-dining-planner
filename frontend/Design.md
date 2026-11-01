@@ -152,6 +152,7 @@ A minimal set (`lucide-react-native`, wrapped by `components/Icon.tsx`) is used 
 
 - Color is always `ink`, `accent`, or `inkSecondary` — never a fourth hue, never on a filled/colored chip or circle background. An icon sitting in a pale rounded-square background, repeated per row, is exactly the generic "AI app" pattern this system exists to avoid.
 - Reserved for stand-alone navigational glyphs (the back chevron replacing the old `← Back` text link) and a few specific data affordances (meal rating, nutrition-confidence marker). Arrows embedded in button copy (`Log this meal →`, `Sign in with Google →`) stay as text — turning every button into icon+text risks clutter the approved target mock never had.
+- An icon-only `Pressable` must set both `accessibilityLabel` and `accessibilityRole` (plus `accessibilityState` if it's a toggle). `Icon` itself is hidden from assistive tech, so the label is all a screen reader hears.
 - Never used as a repeated per-row decorative bullet. If a screen wants one, that's a sign it's reaching for the icon-grid pattern, not solving a real legibility problem.
 
 ### Macro figures: no new colors

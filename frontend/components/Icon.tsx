@@ -1,4 +1,5 @@
 import { ComponentType } from 'react';
+import { View } from 'react-native';
 import { colors, iconSize } from '../theme';
 
 type IconColorToken = 'ink' | 'accent' | 'inkSecondary';
@@ -24,5 +25,11 @@ export default function Icon({
   color?: IconColorToken;
   size?: IconSizeToken;
 }) {
-  return <LucideIcon color={colors[color]} size={iconSize[size]} strokeWidth={1.75} />;
+  // Decorative to assistive tech: the parent Pressable's accessibilityLabel
+  // is what gets read, so the SVG itself is hidden on web and native.
+  return (
+    <View aria-hidden accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <LucideIcon color={colors[color]} size={iconSize[size]} strokeWidth={1.75} />
+    </View>
+  );
 }

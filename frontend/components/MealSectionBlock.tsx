@@ -93,6 +93,7 @@ export default function MealSectionBlock({
           />
         ) : (
           <Pressable
+            accessibilityRole="button"
             key={entry.id}
             onPress={() => startEditing(entry.id)}
             accessibilityLabel={`Edit ${entry.name ?? 'Quick Add'}`}
@@ -124,11 +125,12 @@ export default function MealSectionBlock({
       {editing !== 'new' && (
         <View style={styles.links}>
           {onLog && (
-            <Pressable onPress={onLog} hitSlop={8} style={({ pressed }) => [styles.logLink, pressed && styles.pressed]}>
+            <Pressable accessibilityRole="button" onPress={onLog} hitSlop={8} style={({ pressed }) => [styles.logLink, pressed && styles.pressed]}>
               <Text style={styles.logLinkText}>+ Log {label.toLowerCase()}</Text>
             </Pressable>
           )}
           <Pressable
+            accessibilityRole="button"
             onPress={() => startEditing('new')}
             hitSlop={8}
             style={({ pressed }) => [styles.logLink, pressed && styles.pressed]}
