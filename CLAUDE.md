@@ -22,7 +22,8 @@ Testing auth-required endpoints (`/preferences`, `/menus/today/crafted`) without
 Frontend (`cd frontend`):
 ```
 npm run web            # desktop browser, fetches http://localhost:8001
-npx tsc --noEmit        # typecheck — the only automated frontend check right now, no test runner is configured yet
+npm run typecheck       # tsc --noEmit — the only automated frontend check right now, no test runner is configured yet
+                        # (also the opt-in pre-commit hook: git config core.hooksPath .githooks)
 ```
 
 Data pipeline (idempotent/diff-based, safe to re-run daily — already cron'd via `scripts/daily_refresh.sh`):

@@ -1,0 +1,29 @@
+#!/bin/sh
+# Frontend typecheck before commit — opt in per clone with
+#   git config core.hooksPath .githooks
+# Typechecks the whole project (tsc ignores tsconfig.json when handed a file
+# list), but only when the commit stages frontend TypeScript or its config.
+# CI runs the same `npm run typecheck`; skip locally with --no-verify.
+
+set -eu
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR -- \
+  'frontend/*.ts' 'frontend/*.tsx' 'frontend/tsconfig.json' 'frontend/package.json')
+[ -z "$staged" ] && exit 0
+
+frontend="$(git rev-parse --show-toplevel)/frontend"
+
+if [ ! -d "$frontend/node_modules" ]; then
+  echo "pre-commit: frontend/node_modules is missing; run \`npm ci\` in frontend/ (or commit with --no-verify)." >&2
+  exit 1
+fi
+
+node_version=$(node -p 'process.versions.node' 2>/dev/null || echo 0)
+if ! node -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>22||(a===22&&b>=13)?0:1)' 2>/dev/null; then
+  echo "pre-commit: Node $node_version is too old; Expo SDK 58 needs 22.13+ (\`cd frontend && nvm use\`)." >&2
+  exit 1
+fi
+
+echo "pre-commit: typechecking frontend..."
+cd "$frontend"
+npm run --silent typecheck

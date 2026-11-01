@@ -58,7 +58,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - name: Typecheck
-        run: npx tsc --noEmit
+        run: npm run typecheck
       - name: npm audit
         # Non-blocking for now: current findings are all in Expo/Metro build
         # tooling (0 critical) with no fix short of a semver-major Expo/RN
