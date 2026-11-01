@@ -28,11 +28,12 @@ def _session_set_cookie(environment: str, monkeypatch) -> str:
 
 @pytest.fixture(autouse=True)
 def _restore_main():
+    # Put back the original app object rather than reloading again: a reload
+    # would leave app.main.app as a new instance, no longer the one
+    # tests/conftest.py imported and sets dependency_overrides on.
+    original = main_module.app
     yield
-    # monkeypatch has undone settings.environment by now; rebuild app.main
-    # with the real settings so later tests see the normal module state.
-    importlib.reload(main_module)
-
+    main_module.app = original
 
 
 def test_session_cookie_is_secure_in_production(monkeypatch):
